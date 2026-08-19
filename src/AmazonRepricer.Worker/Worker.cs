@@ -3,6 +3,7 @@ using AmazonRepricer.Application.Pricing;
 using AmazonRepricer.Domain.Entities;
 using AmazonRepricer.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace AmazonRepricer.Worker;
 
@@ -10,13 +11,34 @@ public sealed class Worker : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<Worker> _logger;
+    private readonly WorkerOptions _options;
 
     public Worker(
         IServiceScopeFactory scopeFactory,
-        ILogger<Worker> logger)
+        ILogger<Worker> logger,
+        IOptions<WorkerOptions> options)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _options = options.Value;
+
+        if (_options.IntervalSeconds <= 0)
+        {
+            throw new InvalidOperationException(
+                "Worker interval must be greater than zero.");
+        }
+
+        if (_options.MaxRetryAttempts <= 0)
+        {
+            throw new InvalidOperationException(
+                "Maximum retry attempts must be greater than zero.");
+        }
+
+        if (_options.RetryDelaySeconds <= 0)
+        {
+            throw new InvalidOperationException(
+                "Retry delay must be greater than zero.");
+        }
     }
 
     protected override async Task ExecuteAsync(
@@ -45,7 +67,7 @@ public sealed class Worker : BackgroundService
             try
             {
                 await Task.Delay(
-                    TimeSpan.FromSeconds(30),
+                    TimeSpan.FromSeconds(_options.IntervalSeconds),
                     stoppingToken);
             }
             catch (OperationCanceledException)
@@ -107,6 +129,52 @@ public sealed class Worker : BackgroundService
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+
+    private async Task<AmazonPricingInfo> GetPricingWithRetryAsync(
+        IAmazonPricingProvider amazonPricingProvider,
+        Product product,
+        CancellationToken cancellationToken)
+    {
+        var maxAttempts = Math.Max(1, _options.MaxRetryAttempts);
+        var baseDelaySeconds = Math.Max(1, _options.RetryDelaySeconds);
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                return await amazonPricingProvider.GetPricingAsync(
+                    product.Asin,
+                    product.Sku,
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+                when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+                when (attempt < maxAttempts)
+            {
+                var delay = TimeSpan.FromSeconds(
+                    baseDelaySeconds * Math.Pow(2, attempt - 1));
+
+                _logger.LogWarning(
+                    exception,
+                    "Amazon pricing request failed for SKU {Sku}. Attempt {Attempt}/{MaxAttempts}. Retrying in {DelaySeconds} seconds.",
+                    product.Sku,
+                    attempt,
+                    maxAttempts,
+                    delay.TotalSeconds);
+
+                await Task.Delay(delay, cancellationToken);
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Amazon pricing request failed after {maxAttempts} attempts for SKU {product.Sku}.");
+    }
+
+
     private async Task ProcessProductAsync(
         RepricerDbContext dbContext,
         IPricingEngine pricingEngine,
@@ -121,9 +189,9 @@ public sealed class Worker : BackgroundService
         }
 
         var pricingInfo =
-            await amazonPricingProvider.GetPricingAsync(
-                product.Asin,
-                product.Sku,
+            await GetPricingWithRetryAsync(
+                amazonPricingProvider,
+                product,
                 cancellationToken);
 
         var result = pricingEngine.Calculate(

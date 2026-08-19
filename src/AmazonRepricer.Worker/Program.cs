@@ -8,6 +8,9 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddInfrastructure(builder.Configuration);
 
+builder.Services.Configure<WorkerOptions>(
+    builder.Configuration.GetSection(WorkerOptions.SectionName));
+
 builder.Services.AddScoped<IPricingEngine, PricingEngine>();
 
 builder.Services.AddScoped<
