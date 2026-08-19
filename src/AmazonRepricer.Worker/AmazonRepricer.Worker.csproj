@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-AmazonRepricer.Worker-2af2a4d2-f1aa-406c-8a38-db542219b292</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AmazonRepricer.Application\AmazonRepricer.Application.csproj" />
+    <ProjectReference Include="..\AmazonRepricer.Infrastructure\AmazonRepricer.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>
