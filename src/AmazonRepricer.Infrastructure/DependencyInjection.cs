@@ -1,3 +1,4 @@
+using AmazonRepricer.Infrastructure.Amazon;
 using AmazonRepricer.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -17,6 +18,13 @@ public static class DependencyInjection
 
         services.AddDbContext<RepricerDbContext>(options =>
             options.UseNpgsql(connectionString));
+
+services.AddHttpClient<ILwaAccessTokenProvider, LwaAccessTokenProvider>(
+            client =>
+            {
+                client.BaseAddress = new Uri("https://api.amazon.com/");
+                client.Timeout = TimeSpan.FromSeconds(30);
+            });
 
         return services;
     }
