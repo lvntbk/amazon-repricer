@@ -26,6 +26,25 @@ services.AddHttpClient<ILwaAccessTokenProvider, LwaAccessTokenProvider>(
                 client.Timeout = TimeSpan.FromSeconds(30);
             });
 
+services.AddHttpClient<AmazonSpApiPricingProvider>(
+            (serviceProvider, client) =>
+            {
+                var configuration =
+                    serviceProvider.GetRequiredService<IConfiguration>();
+
+                var endpoint =
+                    configuration[$"{AmazonSpApiOptions.SectionName}:Endpoint"];
+
+                if (string.IsNullOrWhiteSpace(endpoint))
+                {
+                    throw new InvalidOperationException(
+                        "AmazonSpApi:Endpoint is required.");
+                }
+
+                client.BaseAddress = new Uri(endpoint);
+                client.Timeout = TimeSpan.FromSeconds(30);
+            });
+
         return services;
     }
 }

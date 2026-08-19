@@ -17,9 +17,22 @@ builder.Services.Configure<AmazonSpApiOptions>(
 
 builder.Services.AddScoped<IPricingEngine, PricingEngine>();
 
-builder.Services.AddScoped<
-    IAmazonPricingProvider,
-    MockAmazonPricingProvider>();
+var useMockAmazon =
+    builder.Configuration.GetValue<bool>(
+        $"{AmazonSpApiOptions.SectionName}:UseMock");
+
+if (useMockAmazon)
+{
+    builder.Services.AddScoped<
+        IAmazonPricingProvider,
+        MockAmazonPricingProvider>();
+}
+else
+{
+    builder.Services.AddScoped<IAmazonPricingProvider>(
+        serviceProvider =>
+            serviceProvider.GetRequiredService<AmazonSpApiPricingProvider>());
+}
 
 builder.Services.AddHostedService<Worker>();
 
