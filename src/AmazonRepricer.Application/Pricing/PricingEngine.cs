@@ -9,9 +9,10 @@ public sealed class PricingEngine : IPricingEngine
         decimal currentPrice,
         decimal? featuredOfferPrice,
         bool isFeaturedOfferOurs,
-        PricingRule rule)
+        PricingRule rule,
+        decimal? cost = null)
     {
-        Validate(currentPrice, rule);
+        Validate(currentPrice, rule, cost);
 
         if (!rule.IsActive)
         {
@@ -37,6 +38,32 @@ public sealed class PricingEngine : IPricingEngine
                 "Featured Offer is already ours.");
         }
 
+        var effectiveMinimumPrice = rule.MinimumPrice;
+
+        if (cost.HasValue &&
+            rule.MinimumProfitPercentage.HasValue)
+        {
+            var profitFloor = cost.Value *
+                (1 + rule.MinimumProfitPercentage.Value / 100m);
+
+            profitFloor = Math.Round(
+                profitFloor,
+                2,
+                MidpointRounding.AwayFromZero);
+
+            if (profitFloor > rule.MaximumPrice)
+            {
+                return new PricingResult(
+                    currentPrice,
+                    false,
+                    $"Minimum profit floor {profitFloor:F2} exceeds maximum price {rule.MaximumPrice:F2}.");
+            }
+
+            effectiveMinimumPrice = Math.Max(
+                effectiveMinimumPrice,
+                profitFloor);
+        }
+
         var targetPrice = rule.Strategy switch
         {
             PricingStrategy.MatchFeaturedOffer =>
@@ -46,7 +73,8 @@ public sealed class PricingEngine : IPricingEngine
                 featuredOfferPrice.Value - rule.AdjustmentValue,
 
             PricingStrategy.BelowFeaturedOfferByPercentage =>
-                featuredOfferPrice.Value * (1 - rule.AdjustmentValue / 100m),
+                featuredOfferPrice.Value *
+                (1 - rule.AdjustmentValue / 100m),
 
             _ => throw new ArgumentOutOfRangeException(
                 nameof(rule.Strategy),
@@ -61,7 +89,7 @@ public sealed class PricingEngine : IPricingEngine
 
         targetPrice = Math.Clamp(
             targetPrice,
-            rule.MinimumPrice,
+            effectiveMinimumPrice,
             rule.MaximumPrice);
 
         if (targetPrice == currentPrice)
@@ -80,7 +108,8 @@ public sealed class PricingEngine : IPricingEngine
 
     private static void Validate(
         decimal currentPrice,
-        PricingRule rule)
+        PricingRule rule,
+        decimal? cost)
     {
         if (currentPrice <= 0)
             throw new ArgumentOutOfRangeException(
@@ -107,6 +136,21 @@ public sealed class PricingEngine : IPricingEngine
             throw new ArgumentOutOfRangeException(
                 nameof(rule.AdjustmentValue),
                 "Percentage adjustment cannot exceed 100.");
+        }
+
+        if (cost.HasValue && cost.Value <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(cost),
+                "Cost must be greater than zero.");
+        }
+
+        if (rule.MinimumProfitPercentage.HasValue &&
+            rule.MinimumProfitPercentage.Value < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(rule.MinimumProfitPercentage),
+                "Minimum profit percentage cannot be negative.");
         }
     }
 }

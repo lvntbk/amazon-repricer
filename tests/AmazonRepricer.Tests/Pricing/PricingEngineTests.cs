@@ -121,6 +121,78 @@ public sealed class PricingEngineTests
         Assert.Equal(1000m, result.ProposedPrice);
     }
 
+
+    [Fact]
+    public void Price_ShouldRespectMinimumProfitPercentage()
+    {
+        var rule = CreateRule(
+            PricingStrategy.BelowFeaturedOfferByAmount,
+            minimum: 600m,
+            maximum: 1500m,
+            adjustment: 1m);
+
+        rule.MinimumProfitPercentage = 10m;
+
+        var result = _engine.Calculate(
+            currentPrice: 1000m,
+            featuredOfferPrice: 650m,
+            isFeaturedOfferOurs: false,
+            rule,
+            cost: 700m);
+
+        Assert.True(result.ShouldChangePrice);
+        Assert.Equal(770m, result.ProposedPrice);
+    }
+
+    [Fact]
+    public void ConfiguredMinimum_ShouldWin_WhenHigherThanProfitFloor()
+    {
+        var rule = CreateRule(
+            PricingStrategy.BelowFeaturedOfferByAmount,
+            minimum: 900m,
+            maximum: 1500m,
+            adjustment: 1m);
+
+        rule.MinimumProfitPercentage = 10m;
+
+        var result = _engine.Calculate(
+            currentPrice: 1100m,
+            featuredOfferPrice: 850m,
+            isFeaturedOfferOurs: false,
+            rule,
+            cost: 700m);
+
+        Assert.True(result.ShouldChangePrice);
+        Assert.Equal(900m, result.ProposedPrice);
+    }
+
+    [Fact]
+    public void ShouldRejectRepricing_WhenProfitFloorExceedsMaximumPrice()
+    {
+        var rule = CreateRule(
+            PricingStrategy.BelowFeaturedOfferByAmount,
+            minimum: 600m,
+            maximum: 750m,
+            adjustment: 1m);
+
+        rule.MinimumProfitPercentage = 10m;
+
+        var result = _engine.Calculate(
+            currentPrice: 800m,
+            featuredOfferPrice: 700m,
+            isFeaturedOfferOurs: false,
+            rule,
+            cost: 700m);
+
+        Assert.False(result.ShouldChangePrice);
+        Assert.Equal(800m, result.ProposedPrice);
+        Assert.Contains(
+            "profit",
+            result.Reason,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+
     private static PricingRule CreateRule(
         PricingStrategy strategy,
         decimal minimum,

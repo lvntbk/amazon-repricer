@@ -49,7 +49,8 @@ public sealed class RepricingController : ControllerBase
             product.CurrentPrice.Value,
             request.FeaturedOfferPrice,
             request.IsFeaturedOfferOurs,
-            product.PricingRule);
+            product.PricingRule,
+            product.Cost);
 
         var repricingEvent = new RepricingEvent
         {

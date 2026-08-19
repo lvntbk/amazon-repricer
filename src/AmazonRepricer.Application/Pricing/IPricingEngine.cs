@@ -8,5 +8,6 @@ public interface IPricingEngine
         decimal currentPrice,
         decimal? featuredOfferPrice,
         bool isFeaturedOfferOurs,
-        PricingRule rule);
+        PricingRule rule,
+        decimal? cost = null);
 }
