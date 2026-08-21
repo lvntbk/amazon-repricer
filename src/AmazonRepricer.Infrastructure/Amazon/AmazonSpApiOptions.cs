@@ -6,7 +6,12 @@ public sealed class AmazonSpApiOptions
 
     public bool UseMock { get; set; } = true;
 
+    public string Environment { get; set; } = "Production";
+
     public string Endpoint { get; set; } = string.Empty;
+
+    public string LwaEndpoint { get; set; } =
+        "https://api.amazon.com";
 
     public string MarketplaceId { get; set; } = string.Empty;
 

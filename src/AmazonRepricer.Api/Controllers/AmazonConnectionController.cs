@@ -31,11 +31,7 @@ public sealed class AmazonConnectionController : ControllerBase
         return Ok(new
         {
             connected = true,
-            environment = _options.Endpoint.Contains(
-                "sandbox",
-                StringComparison.OrdinalIgnoreCase)
-                    ? "Sandbox"
-                    : "Production",
+            environment = _options.Environment,
             configuredMarketplaceId = _options.MarketplaceId,
             configuredMarketplaceReturned = marketplaces.Any(
                 x => x.Marketplace.Id == _options.MarketplaceId),

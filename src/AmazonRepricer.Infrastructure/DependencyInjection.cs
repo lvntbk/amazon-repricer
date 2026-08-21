@@ -28,13 +28,7 @@ public static class DependencyInjection
         services.AddHttpClient<
             ILwaAccessTokenProvider,
             LwaAccessTokenProvider>(
-            client =>
-            {
-                client.BaseAddress =
-                    new Uri("https://api.amazon.com/");
-
-                client.Timeout = TimeSpan.FromSeconds(30);
-            });
+            ConfigureLwaClient);
 
         services.AddHttpClient<AmazonSpApiPricingProvider>(
             ConfigureAmazonClient);
@@ -47,6 +41,20 @@ public static class DependencyInjection
         return services;
     }
 
+    private static void ConfigureLwaClient(
+        IServiceProvider serviceProvider,
+        HttpClient client)
+    {
+        var options = serviceProvider
+            .GetRequiredService<IOptions<AmazonSpApiOptions>>()
+            .Value;
+
+        var endpoint = EnsureTrailingSlash(options.LwaEndpoint);
+
+        client.BaseAddress = new Uri(endpoint);
+        client.Timeout = TimeSpan.FromSeconds(30);
+    }
+
     private static void ConfigureAmazonClient(
         IServiceProvider serviceProvider,
         HttpClient client)
@@ -55,17 +63,22 @@ public static class DependencyInjection
             .GetRequiredService<IOptions<AmazonSpApiOptions>>()
             .Value;
 
-        if (string.IsNullOrWhiteSpace(options.Endpoint))
-        {
-            throw new InvalidOperationException(
-                "AmazonSpApi:Endpoint is required.");
-        }
-
-        var endpoint = options.Endpoint.EndsWith('/')
-            ? options.Endpoint
-            : options.Endpoint + "/";
+        var endpoint = EnsureTrailingSlash(options.Endpoint);
 
         client.BaseAddress = new Uri(endpoint);
         client.Timeout = TimeSpan.FromSeconds(30);
+    }
+
+    private static string EnsureTrailingSlash(string endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint))
+        {
+            throw new InvalidOperationException(
+                "Amazon endpoint is required.");
+        }
+
+        return endpoint.EndsWith('/')
+            ? endpoint
+            : endpoint + "/";
     }
 }
