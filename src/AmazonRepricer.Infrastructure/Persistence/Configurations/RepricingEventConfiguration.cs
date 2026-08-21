@@ -1,10 +1,12 @@
 using AmazonRepricer.Domain.Entities;
+using AmazonRepricer.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace AmazonRepricer.Infrastructure.Persistence.Configurations;
 
-public sealed class RepricingEventConfiguration : IEntityTypeConfiguration<RepricingEvent>
+public sealed class RepricingEventConfiguration
+    : IEntityTypeConfiguration<RepricingEvent>
 {
     public void Configure(EntityTypeBuilder<RepricingEvent> builder)
     {
@@ -25,7 +27,27 @@ public sealed class RepricingEventConfiguration : IEntityTypeConfiguration<Repri
             .HasMaxLength(1000)
             .IsRequired();
 
-        builder.HasIndex(x => new { x.ProductId, x.CreatedAtUtc });
+        builder.Property(x => x.Status)
+            .HasConversion<string>()
+            .HasMaxLength(32)
+            .HasDefaultValue(RepricingStatus.Pending)
+            .HasSentinel(RepricingStatus.Unspecified)
+            .IsRequired();
+
+        builder.Property(x => x.ReviewNote)
+            .HasMaxLength(1000);
+
+        builder.HasIndex(x => new
+        {
+            x.ProductId,
+            x.CreatedAtUtc
+        });
+
+        builder.HasIndex(x => new
+        {
+            x.Status,
+            x.CreatedAtUtc
+        });
 
         builder.HasOne(x => x.Product)
             .WithMany(x => x.RepricingEvents)
