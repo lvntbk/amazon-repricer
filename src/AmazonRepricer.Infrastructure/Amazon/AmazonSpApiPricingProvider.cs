@@ -1,4 +1,4 @@
-using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using AmazonRepricer.Application.Amazon;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -7,6 +7,9 @@ namespace AmazonRepricer.Infrastructure.Amazon;
 
 public sealed class AmazonSpApiPricingProvider : IAmazonPricingProvider
 {
+    private const string CompetitiveSummaryPath =
+        "batches/products/pricing/2022-05-01/items/competitiveSummary";
+
     private readonly HttpClient _httpClient;
     private readonly ILwaAccessTokenProvider _accessTokenProvider;
     private readonly AmazonSpApiOptions _options;
@@ -37,28 +40,111 @@ public sealed class AmazonSpApiPricingProvider : IAmazonPricingProvider
 
         ValidateConfiguration();
 
-        var accessToken = await _accessTokenProvider.GetAccessTokenAsync(
-            cancellationToken);
+        var accessToken =
+            await _accessTokenProvider.GetAccessTokenAsync(cancellationToken);
+
+        var body = new
+        {
+            requests = new[]
+            {
+                new
+                {
+                    asin,
+                    marketplaceId = _options.MarketplaceId,
+                    includedData = new[]
+                    {
+                        "featuredBuyingOptions"
+                    },
+                    uri =
+                        "/products/pricing/2022-05-01/items/competitiveSummary",
+                    method = "GET"
+                }
+            }
+        };
 
         using var request = new HttpRequestMessage(
-            HttpMethod.Get,
-            "/");
-
-        request.Headers.Authorization =
-            new AuthenticationHeaderValue("Bearer", accessToken);
+            HttpMethod.Post,
+            CompetitiveSummaryPath);
 
         request.Headers.TryAddWithoutValidation(
             "x-amz-access-token",
             accessToken);
 
-        _logger.LogDebug(
-            "SP-API pricing provider initialized for ASIN {Asin}, SKU {Sku}, Marketplace {MarketplaceId}.",
-            asin,
-            sku,
-            _options.MarketplaceId);
+        request.Content = JsonContent.Create(body);
 
-        throw new NotSupportedException(
-            "Amazon Product Pricing request contract has not been enabled yet.");
+        using var response = await _httpClient.SendAsync(
+            request,
+            cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync(
+                cancellationToken);
+
+            throw new HttpRequestException(
+                $"Amazon pricing request failed with status " +
+                $"{(int)response.StatusCode}. Response: {error}");
+        }
+
+        var batch =
+            await response.Content.ReadFromJsonAsync<
+                CompetitiveSummaryBatchResponse>(
+                cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException(
+                "Amazon pricing API returned an empty response.");
+
+        var item = batch.Responses.SingleOrDefault()
+            ?? throw new InvalidOperationException(
+                "Amazon pricing API returned no item response.");
+
+        if (item.Status.StatusCode != 200)
+        {
+            throw new HttpRequestException(
+                $"Amazon pricing item failed with status " +
+                $"{item.Status.StatusCode}: {item.Status.ReasonPhrase}");
+        }
+
+        var featuredOffer = item.Body.FeaturedBuyingOptions
+            .Where(x => string.Equals(
+                x.BuyingOptionType,
+                "New",
+                StringComparison.OrdinalIgnoreCase))
+            .SelectMany(x => x.SegmentedFeaturedOffers)
+            .Select(x => new
+            {
+                Offer = x,
+                LandedPrice =
+                    x.ListingPrice.Amount +
+                    x.ShippingOptions
+                        .Where(y => y.ShippingOptionType == "DEFAULT")
+                        .Select(y => y.Price.Amount)
+                        .FirstOrDefault()
+            })
+            .OrderBy(x => x.LandedPrice)
+            .FirstOrDefault();
+
+        if (featuredOffer is null)
+        {
+            return new AmazonPricingInfo(
+                FeaturedOfferPrice: null,
+                IsFeaturedOfferOurs: false);
+        }
+
+        var isOurs = string.Equals(
+            featuredOffer.Offer.SellerId,
+            _options.SellerId,
+            StringComparison.Ordinal);
+
+        _logger.LogInformation(
+            "Amazon pricing received for SKU {Sku}, ASIN {Asin}: featured offer {Price}, ours {IsOurs}.",
+            sku,
+            asin,
+            featuredOffer.LandedPrice,
+            isOurs);
+
+        return new AmazonPricingInfo(
+            featuredOffer.LandedPrice,
+            isOurs);
     }
 
     private void ValidateConfiguration()
@@ -70,5 +156,9 @@ public sealed class AmazonSpApiPricingProvider : IAmazonPricingProvider
         if (string.IsNullOrWhiteSpace(_options.MarketplaceId))
             throw new InvalidOperationException(
                 "AmazonSpApi:MarketplaceId is required.");
+
+        if (string.IsNullOrWhiteSpace(_options.SellerId))
+            throw new InvalidOperationException(
+                "AmazonSpApi:SellerId is required.");
     }
 }

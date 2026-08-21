@@ -1,6 +1,9 @@
-@AmazonRepricer.Api_HostAddress = http://localhost:5066
+@host = http://localhost:5066
 
-GET {{AmazonRepricer.Api_HostAddress}}/weatherforecast/
+GET {{host}}/api/amazon/connection-test
 Accept: application/json
 
 ###
+
+GET {{host}}/api/amazon-stores
+Accept: application/json

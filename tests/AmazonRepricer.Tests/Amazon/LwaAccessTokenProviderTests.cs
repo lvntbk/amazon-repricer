@@ -128,7 +128,7 @@ public sealed class LwaAccessTokenProviderTests
             () => provider.GetAccessTokenAsync());
 
         Assert.Contains("400", exception.Message);
-        Assert.Contains("invalid_grant", exception.Message);
+        Assert.DoesNotContain("invalid_grant", exception.Message);
         Assert.Equal(1, handler.RequestCount);
     }
 

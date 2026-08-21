@@ -7,6 +7,7 @@ public sealed class LwaAccessTokenProvider : ILwaAccessTokenProvider
 {
     private readonly HttpClient _httpClient;
     private readonly AmazonSpApiOptions _options;
+    private readonly SemaphoreSlim _refreshLock = new(1, 1);
 
     private string? _cachedAccessToken;
     private DateTimeOffset _expiresAtUtc;
@@ -22,62 +23,75 @@ public sealed class LwaAccessTokenProvider : ILwaAccessTokenProvider
     public async Task<string> GetAccessTokenAsync(
         CancellationToken cancellationToken = default)
     {
-        if (!string.IsNullOrWhiteSpace(_cachedAccessToken) &&
-            DateTimeOffset.UtcNow < _expiresAtUtc)
+        if (HasValidCachedToken())
+            return _cachedAccessToken!;
+
+        await _refreshLock.WaitAsync(cancellationToken);
+
+        try
         {
-            return _cachedAccessToken;
-        }
+            if (HasValidCachedToken())
+                return _cachedAccessToken!;
 
-        ValidateConfiguration();
+            ValidateConfiguration();
 
-        using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            "auth/o2/token");
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                "auth/o2/token");
 
-        request.Content = new FormUrlEncodedContent(
-            new Dictionary<string, string>
-            {
-                ["grant_type"] = "refresh_token",
-                ["refresh_token"] = _options.RefreshToken,
-                ["client_id"] = _options.ClientId,
-                ["client_secret"] = _options.ClientSecret
-            });
+            request.Content = new FormUrlEncodedContent(
+                new Dictionary<string, string>
+                {
+                    ["grant_type"] = "refresh_token",
+                    ["refresh_token"] = _options.RefreshToken,
+                    ["client_id"] = _options.ClientId,
+                    ["client_secret"] = _options.ClientSecret
+                });
 
-        using var response = await _httpClient.SendAsync(
-            request,
-            cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            var error = await response.Content.ReadAsStringAsync(
+            using var response = await _httpClient.SendAsync(
+                request,
                 cancellationToken);
 
-            throw new HttpRequestException(
-                $"Amazon LWA token request failed. " +
-                $"Status: {(int)response.StatusCode}. Body: {error}");
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new HttpRequestException(
+                    $"Amazon LWA token request failed with status " +
+                    $"{(int)response.StatusCode}.");
+            }
+
+            var tokenResponse =
+                await response.Content.ReadFromJsonAsync<
+                    LwaAccessTokenResponse>(
+                    cancellationToken: cancellationToken)
+                ?? throw new InvalidOperationException(
+                    "Amazon LWA returned an empty response.");
+
+            if (string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
+            {
+                throw new InvalidOperationException(
+                    "Amazon LWA response did not contain an access token.");
+            }
+
+            _cachedAccessToken = tokenResponse.AccessToken;
+
+            var safeLifetimeSeconds =
+                Math.Max(tokenResponse.ExpiresIn - 60, 1);
+
+            _expiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(
+                safeLifetimeSeconds);
+
+            return _cachedAccessToken;
         }
-
-        var tokenResponse =
-            await response.Content.ReadFromJsonAsync<LwaAccessTokenResponse>(
-                cancellationToken: cancellationToken)
-            ?? throw new InvalidOperationException(
-                "Amazon LWA returned an empty response.");
-
-        if (string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
+        finally
         {
-            throw new InvalidOperationException(
-                "Amazon LWA response did not contain an access token.");
+            _refreshLock.Release();
         }
+    }
 
-        _cachedAccessToken = tokenResponse.AccessToken;
-
-        var safeLifetimeSeconds =
-            Math.Max(tokenResponse.ExpiresIn - 60, 1);
-
-        _expiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(
-            safeLifetimeSeconds);
-
-        return _cachedAccessToken;
+    private bool HasValidCachedToken()
+    {
+        return !string.IsNullOrWhiteSpace(_cachedAccessToken) &&
+               DateTimeOffset.UtcNow < _expiresAtUtc;
     }
 
     private void ValidateConfiguration()
