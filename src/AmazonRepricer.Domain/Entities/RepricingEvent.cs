@@ -25,6 +25,10 @@ public sealed class RepricingEvent
 
     public DateTime? ReviewedAtUtc { get; set; }
 
+    public DateTime? ProcessedAtUtc { get; set; }
+
+    public string? ApplicationError { get; set; }
+
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
     public Product Product { get; set; } = null!;
@@ -45,6 +49,61 @@ public sealed class RepricingEvent
         Status = RepricingStatus.Rejected;
         ReviewNote = NormalizeNote(note);
         ReviewedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MarkApplied(decimal appliedPrice)
+    {
+        EnsureApproved();
+
+        if (appliedPrice <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(appliedPrice),
+                "Applied price must be greater than zero.");
+        }
+
+        Status = RepricingStatus.Applied;
+        AppliedPrice = appliedPrice;
+        WasApplied = true;
+        ApplicationError = null;
+        ProcessedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MarkFailed(string error)
+    {
+        EnsureApproved();
+
+        if (string.IsNullOrWhiteSpace(error))
+        {
+            throw new ArgumentException(
+                "Application error is required.",
+                nameof(error));
+        }
+
+        var normalizedError = error.Trim();
+
+        if (normalizedError.Length > 1000)
+        {
+            throw new ArgumentException(
+                "Application error cannot exceed 1000 characters.",
+                nameof(error));
+        }
+
+        Status = RepricingStatus.Failed;
+        AppliedPrice = null;
+        WasApplied = false;
+        ApplicationError = normalizedError;
+        ProcessedAtUtc = DateTime.UtcNow;
+    }
+
+    private void EnsureApproved()
+    {
+        if (Status != RepricingStatus.Approved)
+        {
+            throw new InvalidOperationException(
+                $"Only approved events can be processed. " +
+                $"Current status: {Status}.");
+        }
     }
 
     private void EnsurePending()

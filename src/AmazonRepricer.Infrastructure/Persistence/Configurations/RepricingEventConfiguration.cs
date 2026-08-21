@@ -37,6 +37,9 @@ public sealed class RepricingEventConfiguration
         builder.Property(x => x.ReviewNote)
             .HasMaxLength(1000);
 
+        builder.Property(x => x.ApplicationError)
+            .HasMaxLength(1000);
+
         builder.HasIndex(x => new
         {
             x.ProductId,
