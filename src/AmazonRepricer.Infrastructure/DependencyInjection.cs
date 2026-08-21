@@ -25,10 +25,24 @@ public static class DependencyInjection
         services.Configure<AmazonSpApiOptions>(
             configuration.GetSection(AmazonSpApiOptions.SectionName));
 
-        services.AddHttpClient<
-            ILwaAccessTokenProvider,
-            LwaAccessTokenProvider>(
+        services.AddHttpClient(
+            "AmazonLwa",
             ConfigureLwaClient);
+
+        services.AddSingleton<ILwaAccessTokenProvider>(
+            serviceProvider =>
+            {
+                var httpClientFactory =
+                    serviceProvider.GetRequiredService<IHttpClientFactory>();
+
+                var options =
+                    serviceProvider.GetRequiredService<
+                        IOptions<AmazonSpApiOptions>>();
+
+                return new LwaAccessTokenProvider(
+                    httpClientFactory.CreateClient("AmazonLwa"),
+                    options);
+            });
 
         services.AddHttpClient<AmazonSpApiPricingProvider>(
             ConfigureAmazonClient);

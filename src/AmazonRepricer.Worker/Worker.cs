@@ -201,14 +201,38 @@ public sealed class Worker : BackgroundService
             product.PricingRule,
             product.Cost);
 
-        dbContext.PriceSnapshots.Add(
-            new PriceSnapshot
-            {
-                ProductId = product.Id,
-                OurPrice = product.CurrentPrice.Value,
-                FeaturedOfferPrice = pricingInfo.FeaturedOfferPrice,
-                IsFeaturedOfferOurs = pricingInfo.IsFeaturedOfferOurs
-            });
+        var lastSnapshot = await dbContext.PriceSnapshots
+            .Where(x => x.ProductId == product.Id)
+            .OrderByDescending(x => x.CapturedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var isDuplicateSnapshot =
+            lastSnapshot is not null &&
+            lastSnapshot.OurPrice == product.CurrentPrice.Value &&
+            lastSnapshot.FeaturedOfferPrice ==
+                pricingInfo.FeaturedOfferPrice &&
+            lastSnapshot.IsFeaturedOfferOurs ==
+                pricingInfo.IsFeaturedOfferOurs;
+
+        if (!isDuplicateSnapshot)
+        {
+            dbContext.PriceSnapshots.Add(
+                new PriceSnapshot
+                {
+                    ProductId = product.Id,
+                    OurPrice = product.CurrentPrice.Value,
+                    FeaturedOfferPrice =
+                        pricingInfo.FeaturedOfferPrice,
+                    IsFeaturedOfferOurs =
+                        pricingInfo.IsFeaturedOfferOurs
+                });
+        }
+        else
+        {
+            _logger.LogInformation(
+                "Duplicate price snapshot skipped for SKU {Sku}.",
+                product.Sku);
+        }
 
         var lastEvent = await dbContext.RepricingEvents
             .Where(x => x.ProductId == product.Id)
