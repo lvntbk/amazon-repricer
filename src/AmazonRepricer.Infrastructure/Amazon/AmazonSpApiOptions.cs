@@ -17,6 +17,10 @@ public sealed class AmazonSpApiOptions
 
     public string SellerId { get; set; } = string.Empty;
 
+    public string DefaultProductType { get; set; } = "PRODUCT";
+
+    public string CurrencyCode { get; set; } = "TRY";
+
     public string ClientId { get; set; } = string.Empty;
 
     public string ClientSecret { get; set; } = string.Empty;

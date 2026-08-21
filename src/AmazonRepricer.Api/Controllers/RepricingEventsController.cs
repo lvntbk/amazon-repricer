@@ -1,8 +1,11 @@
 using AmazonRepricer.Api.Contracts.RepricingEvents;
+using AmazonRepricer.Application.Amazon;
 using AmazonRepricer.Domain.Enums;
+using AmazonRepricer.Infrastructure.Amazon;
 using AmazonRepricer.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace AmazonRepricer.Api.Controllers;
 
@@ -11,11 +14,20 @@ namespace AmazonRepricer.Api.Controllers;
 public sealed class RepricingEventsController : ControllerBase
 {
     private readonly RepricerDbContext _dbContext;
+    private readonly IAmazonPriceUpdater _priceUpdater;
+    private readonly AmazonSpApiOptions _amazonOptions;
+    private readonly ILogger<RepricingEventsController> _logger;
 
     public RepricingEventsController(
-        RepricerDbContext dbContext)
+        RepricerDbContext dbContext,
+        IAmazonPriceUpdater priceUpdater,
+        IOptions<AmazonSpApiOptions> amazonOptions,
+        ILogger<RepricingEventsController> logger)
     {
         _dbContext = dbContext;
+        _priceUpdater = priceUpdater;
+        _amazonOptions = amazonOptions.Value;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -50,6 +62,8 @@ public sealed class RepricingEventsController : ControllerBase
                 Status = x.Status.ToString(),
                 x.ReviewNote,
                 x.ReviewedAtUtc,
+                x.ProcessedAtUtc,
+                x.ApplicationError,
                 x.CreatedAtUtc
             })
             .ToListAsync(cancellationToken);
@@ -77,6 +91,8 @@ public sealed class RepricingEventsController : ControllerBase
                 Status = x.Status.ToString(),
                 x.ReviewNote,
                 x.ReviewedAtUtc,
+                x.ProcessedAtUtc,
+                x.ApplicationError,
                 x.CreatedAtUtc
             })
             .FirstOrDefaultAsync(cancellationToken);
@@ -108,6 +124,140 @@ public sealed class RepricingEventsController : ControllerBase
             request,
             approve: false,
             cancellationToken);
+    }
+
+    [HttpPost("{id:guid}/apply")]
+    public async Task<IActionResult> Apply(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var repricingEvent =
+            await _dbContext.RepricingEvents
+                .Include(x => x.Product)
+                .ThenInclude(x => x.AmazonStore)
+                .FirstOrDefaultAsync(
+                    x => x.Id == id,
+                    cancellationToken);
+
+        if (repricingEvent is null)
+            return NotFound();
+
+        if (repricingEvent.Status != RepricingStatus.Approved)
+        {
+            return Conflict(
+                $"Only approved events can be applied. " +
+                $"Current status: {repricingEvent.Status}.");
+        }
+
+        var product = repricingEvent.Product;
+        var amazonStore = product.AmazonStore;
+
+        if (!amazonStore.IsActive)
+        {
+            return Conflict(
+                "The Amazon store is not active.");
+        }
+
+        if (!product.IsRepricingEnabled)
+        {
+            return Conflict(
+                "Repricing is disabled for this product.");
+        }
+
+        if (!product.CurrentPrice.HasValue)
+        {
+            return Conflict(
+                "Product does not have a current price.");
+        }
+
+        if (product.CurrentPrice.Value !=
+            repricingEvent.OldPrice)
+        {
+            return Conflict(new
+            {
+                error =
+                    "The approved event is based on a stale price.",
+                currentPrice = product.CurrentPrice.Value,
+                eventOldPrice = repricingEvent.OldPrice
+            });
+        }
+
+        AmazonPriceUpdateResult updateResult;
+
+        try
+        {
+            updateResult =
+                await _priceUpdater.UpdatePriceAsync(
+                    amazonStore.SellerId,
+                    product.Sku,
+                    amazonStore.MarketplaceId,
+                    _amazonOptions.DefaultProductType,
+                    repricingEvent.ProposedPrice,
+                    _amazonOptions.CurrencyCode,
+                    cancellationToken);
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogError(
+                exception,
+                "Amazon price submission failed for " +
+                "repricing event {RepricingEventId}, SKU {Sku}.",
+                repricingEvent.Id,
+                product.Sku);
+
+            return StatusCode(
+                StatusCodes.Status502BadGateway,
+                "Amazon price service could not be reached " +
+                "or returned an HTTP error.");
+        }
+
+        if (!updateResult.Accepted)
+        {
+            var applicationError =
+                updateResult.Issues.Count == 0
+                    ? "Amazon did not accept the price update."
+                    : string.Join(
+                        " | ",
+                        updateResult.Issues);
+
+            if (applicationError.Length > 1000)
+                applicationError = applicationError[..1000];
+
+            repricingEvent.MarkFailed(applicationError);
+
+            await _dbContext.SaveChangesAsync(
+                cancellationToken);
+
+            return UnprocessableEntity(new
+            {
+                repricingEvent.Id,
+                Status = repricingEvent.Status.ToString(),
+                updateResult.SubmissionId,
+                Issues = updateResult.Issues,
+                repricingEvent.ProcessedAtUtc
+            });
+        }
+
+        repricingEvent.MarkApplied(
+            repricingEvent.ProposedPrice);
+
+        product.CurrentPrice =
+            repricingEvent.ProposedPrice;
+
+        await _dbContext.SaveChangesAsync(
+            cancellationToken);
+
+        return Ok(new
+        {
+            EventId = repricingEvent.Id,
+            ProductId = product.Id,
+            product.Sku,
+            OldPrice = repricingEvent.OldPrice,
+            NewPrice = product.CurrentPrice,
+            Status = repricingEvent.Status.ToString(),
+            updateResult.SubmissionId,
+            repricingEvent.ProcessedAtUtc
+        });
     }
 
     private async Task<IActionResult> Review(

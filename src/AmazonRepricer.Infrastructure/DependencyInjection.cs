@@ -1,3 +1,4 @@
+using AmazonRepricer.Application.Amazon;
 using AmazonRepricer.Infrastructure.Amazon;
 using AmazonRepricer.Infrastructure.Amazon.Sellers;
 using AmazonRepricer.Infrastructure.Persistence;
@@ -50,6 +51,11 @@ public static class DependencyInjection
         services.AddHttpClient<
             IAmazonSellersClient,
             AmazonSellersClient>(
+            ConfigureAmazonClient);
+
+        services.AddHttpClient<
+            IAmazonPriceUpdater,
+            AmazonListingsPriceUpdater>(
             ConfigureAmazonClient);
 
         return services;
