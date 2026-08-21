@@ -31,6 +31,7 @@ public sealed class RepricingEventConfiguration
             .HasConversion<string>()
             .HasMaxLength(32)
             .HasDefaultValue(RepricingStatus.Pending)
+            .HasSentinel(RepricingStatus.Unspecified)
             .IsRequired();
 
         builder.Property(x => x.ReviewNote)

@@ -2,6 +2,7 @@ namespace AmazonRepricer.Domain.Enums;
 
 public enum RepricingStatus
 {
+    Unspecified = 0,
     Pending = 1,
     Approved = 2,
     Rejected = 3,
