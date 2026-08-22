@@ -51,6 +51,31 @@ public sealed class RepricingEvent
         ReviewedAtUtc = DateTime.UtcNow;
     }
 
+    public void ApproveAutomatically(string reason)
+    {
+        EnsurePending();
+
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            throw new ArgumentException(
+                "Automatic approval reason is required.",
+                nameof(reason));
+        }
+
+        var normalizedReason = reason.Trim();
+
+        if (normalizedReason.Length > 1000)
+        {
+            throw new ArgumentException(
+                "Automatic approval reason cannot exceed 1000 characters.",
+                nameof(reason));
+        }
+
+        Status = RepricingStatus.Approved;
+        ReviewNote = normalizedReason;
+        ReviewedAtUtc = DateTime.UtcNow;
+    }
+
     public void MarkApplied(decimal appliedPrice)
     {
         EnsureApproved();
