@@ -12,6 +12,10 @@ public sealed class Product
 
     public string Title { get; set; } = string.Empty;
 
+    public string? ProductType { get; set; }
+
+    public string? CurrencyCode { get; set; }
+
     public decimal? Cost { get; set; }
 
     public decimal? CurrentPrice { get; set; }
