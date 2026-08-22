@@ -39,6 +39,19 @@ public sealed class Worker : BackgroundService
             throw new InvalidOperationException(
                 "Retry delay must be greater than zero.");
         }
+
+        if (_options.MaxPriceChangePercentage <= 0 ||
+            _options.MaxPriceChangePercentage > 100)
+        {
+            throw new InvalidOperationException(
+                "Maximum price change percentage must be between 0 and 100.");
+        }
+
+        if (_options.MinimumRepricingIntervalSeconds < 0)
+        {
+            throw new InvalidOperationException(
+                "Minimum repricing interval cannot be negative.");
+        }
     }
 
     protected override async Task ExecuteAsync(
