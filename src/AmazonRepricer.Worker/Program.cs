@@ -22,6 +22,10 @@ builder.Services.AddScoped<
     IAutomaticRepricingGuard,
     AutomaticRepricingGuard>();
 
+builder.Services.AddScoped<
+    IAutomaticRepricingExecutor,
+    AutomaticRepricingExecutor>();
+
 var useMockAmazon =
     builder.Configuration.GetValue<bool>(
         $"{AmazonSpApiOptions.SectionName}:UseMock");
