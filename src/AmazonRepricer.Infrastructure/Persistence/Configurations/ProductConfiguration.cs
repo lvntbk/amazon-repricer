@@ -24,6 +24,12 @@ public sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
             .HasMaxLength(500)
             .IsRequired();
 
+        builder.Property(x => x.ProductType)
+            .HasMaxLength(100);
+
+        builder.Property(x => x.CurrencyCode)
+            .HasMaxLength(3);
+
         builder.Property(x => x.Cost)
             .HasPrecision(18, 2);
 

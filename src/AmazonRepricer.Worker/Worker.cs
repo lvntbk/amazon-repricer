@@ -1,3 +1,4 @@
+using AmazonRepricer.Worker.Repricing;
 using AmazonRepricer.Application.Amazon;
 using AmazonRepricer.Application.Pricing;
 using AmazonRepricer.Domain.Entities;
@@ -38,6 +39,19 @@ public sealed class Worker : BackgroundService
         {
             throw new InvalidOperationException(
                 "Retry delay must be greater than zero.");
+        }
+
+        if (_options.MaxPriceChangePercentage <= 0 ||
+            _options.MaxPriceChangePercentage > 100)
+        {
+            throw new InvalidOperationException(
+                "Maximum price change percentage must be between 0 and 100.");
+        }
+
+        if (_options.MinimumRepricingIntervalSeconds < 0)
+        {
+            throw new InvalidOperationException(
+                "Minimum repricing interval cannot be negative.");
         }
     }
 
@@ -91,15 +105,21 @@ public sealed class Worker : BackgroundService
         var pricingEngine =
             scope.ServiceProvider.GetRequiredService<IPricingEngine>();
 
+        var automaticRepricingExecutor =
+            scope.ServiceProvider.GetRequiredService<
+                IAutomaticRepricingExecutor>();
+
         var amazonPricingProvider =
             scope.ServiceProvider.GetRequiredService<IAmazonPricingProvider>();
 
         var products = await dbContext.Products
             .Include(x => x.PricingRule)
+            .Include(x => x.AmazonStore)
             .Where(x =>
                 x.IsRepricingEnabled &&
                 x.PricingRule != null &&
-                x.PricingRule.IsActive)
+                x.PricingRule.IsActive &&
+                x.AmazonStore.IsActive)
             .ToListAsync(cancellationToken);
 
         _logger.LogInformation(
@@ -114,6 +134,7 @@ public sealed class Worker : BackgroundService
                     dbContext,
                     pricingEngine,
                     amazonPricingProvider,
+                    automaticRepricingExecutor,
                     product,
                     cancellationToken);
             }
@@ -179,6 +200,7 @@ public sealed class Worker : BackgroundService
         RepricerDbContext dbContext,
         IPricingEngine pricingEngine,
         IAmazonPricingProvider amazonPricingProvider,
+        IAutomaticRepricingExecutor automaticRepricingExecutor,
         Product product,
         CancellationToken cancellationToken)
     {
@@ -239,38 +261,58 @@ public sealed class Worker : BackgroundService
             .OrderByDescending(x => x.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
+        if (!result.ShouldChangePrice)
+        {
+            _logger.LogInformation(
+                "No repricing required for SKU {Sku}. Reason: {Reason}",
+                product.Sku,
+                result.Reason);
+
+            return;
+        }
+
         var isDuplicateDecision =
             lastEvent is not null &&
             lastEvent.OldPrice == product.CurrentPrice.Value &&
             lastEvent.ProposedPrice == result.ProposedPrice &&
             lastEvent.WasApplied == false;
 
-        if (!isDuplicateDecision)
-        {
-            dbContext.RepricingEvents.Add(
-                new RepricingEvent
-                {
-                    ProductId = product.Id,
-                    OldPrice = product.CurrentPrice.Value,
-                    ProposedPrice = result.ProposedPrice,
-                    AppliedPrice = null,
-                    WasApplied = false,
-                    Reason = result.Reason
-                });
-        }
-        else
+        if (isDuplicateDecision)
         {
             _logger.LogInformation(
                 "Duplicate repricing decision skipped for SKU {Sku}.",
                 product.Sku);
+
+            return;
         }
 
+        var repricingEvent = new RepricingEvent
+        {
+            ProductId = product.Id,
+            OldPrice = product.CurrentPrice.Value,
+            ProposedPrice = result.ProposedPrice,
+            AppliedPrice = null,
+            WasApplied = false,
+            Reason = result.Reason
+        };
+
+        dbContext.RepricingEvents.Add(repricingEvent);
+
+        var executionResult =
+            await automaticRepricingExecutor.ExecuteAsync(
+                product,
+                repricingEvent,
+                cancellationToken);
+
         _logger.LogInformation(
-            "SKU {Sku}: current {CurrentPrice}, featured offer {FeaturedOfferPrice}, proposed {ProposedPrice}, change {ShouldChange}",
+            "SKU {Sku}: current {CurrentPrice}, featured offer {FeaturedOfferPrice}, proposed {ProposedPrice}, change {ShouldChange}, automatic attempted {WasAttempted}, automatic applied {WasApplied}, execution reason {ExecutionReason}",
             product.Sku,
             product.CurrentPrice,
             pricingInfo.FeaturedOfferPrice,
             result.ProposedPrice,
-            result.ShouldChangePrice);
+            result.ShouldChangePrice,
+            executionResult.WasAttempted,
+            executionResult.WasApplied,
+            executionResult.Reason);
     }
 }

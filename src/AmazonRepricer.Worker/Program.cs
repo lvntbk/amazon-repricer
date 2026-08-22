@@ -1,3 +1,4 @@
+using AmazonRepricer.Worker.Repricing;
 using AmazonRepricer.Infrastructure.Amazon;
 using AmazonRepricer.Application.Amazon;
 using AmazonRepricer.Application.Pricing;
@@ -16,6 +17,14 @@ builder.Services.Configure<AmazonSpApiOptions>(
     builder.Configuration.GetSection(AmazonSpApiOptions.SectionName));
 
 builder.Services.AddScoped<IPricingEngine, PricingEngine>();
+
+builder.Services.AddScoped<
+    IAutomaticRepricingGuard,
+    AutomaticRepricingGuard>();
+
+builder.Services.AddScoped<
+    IAutomaticRepricingExecutor,
+    AutomaticRepricingExecutor>();
 
 var useMockAmazon =
     builder.Configuration.GetValue<bool>(
