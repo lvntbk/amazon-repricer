@@ -1,3 +1,4 @@
+using AmazonRepricer.Worker.Repricing;
 using AmazonRepricer.Application.Amazon;
 using AmazonRepricer.Application.Pricing;
 using AmazonRepricer.Domain.Entities;
@@ -104,15 +105,24 @@ public sealed class Worker : BackgroundService
         var pricingEngine =
             scope.ServiceProvider.GetRequiredService<IPricingEngine>();
 
+        var automaticRepricingGuard =
+            scope.ServiceProvider.GetRequiredService<
+                IAutomaticRepricingGuard>();
+
         var amazonPricingProvider =
             scope.ServiceProvider.GetRequiredService<IAmazonPricingProvider>();
 
+        var amazonPriceUpdater =
+            scope.ServiceProvider.GetRequiredService<IAmazonPriceUpdater>();
+
         var products = await dbContext.Products
             .Include(x => x.PricingRule)
+            .Include(x => x.AmazonStore)
             .Where(x =>
                 x.IsRepricingEnabled &&
                 x.PricingRule != null &&
-                x.PricingRule.IsActive)
+                x.PricingRule.IsActive &&
+                x.AmazonStore.IsActive)
             .ToListAsync(cancellationToken);
 
         _logger.LogInformation(
@@ -127,6 +137,8 @@ public sealed class Worker : BackgroundService
                     dbContext,
                     pricingEngine,
                     amazonPricingProvider,
+                    amazonPriceUpdater,
+                    automaticRepricingGuard,
                     product,
                     cancellationToken);
             }
@@ -192,6 +204,8 @@ public sealed class Worker : BackgroundService
         RepricerDbContext dbContext,
         IPricingEngine pricingEngine,
         IAmazonPricingProvider amazonPricingProvider,
+        IAmazonPriceUpdater amazonPriceUpdater,
+        IAutomaticRepricingGuard automaticRepricingGuard,
         Product product,
         CancellationToken cancellationToken)
     {
@@ -252,32 +266,156 @@ public sealed class Worker : BackgroundService
             .OrderByDescending(x => x.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
+        if (!result.ShouldChangePrice)
+        {
+            _logger.LogInformation(
+                "No repricing required for SKU {Sku}. Reason: {Reason}",
+                product.Sku,
+                result.Reason);
+
+            return;
+        }
+
         var isDuplicateDecision =
             lastEvent is not null &&
             lastEvent.OldPrice == product.CurrentPrice.Value &&
             lastEvent.ProposedPrice == result.ProposedPrice &&
             lastEvent.WasApplied == false;
 
-        if (!isDuplicateDecision)
-        {
-            dbContext.RepricingEvents.Add(
-                new RepricingEvent
-                {
-                    ProductId = product.Id,
-                    OldPrice = product.CurrentPrice.Value,
-                    ProposedPrice = result.ProposedPrice,
-                    AppliedPrice = null,
-                    WasApplied = false,
-                    Reason = result.Reason
-                });
-        }
-        else
+        if (isDuplicateDecision)
         {
             _logger.LogInformation(
                 "Duplicate repricing decision skipped for SKU {Sku}.",
                 product.Sku);
+
+            return;
         }
 
+        var repricingEvent = new RepricingEvent
+        {
+            ProductId = product.Id,
+            OldPrice = product.CurrentPrice.Value,
+            ProposedPrice = result.ProposedPrice,
+            AppliedPrice = null,
+            WasApplied = false,
+            Reason = result.Reason
+        };
+
+        dbContext.RepricingEvents.Add(repricingEvent);
+
+        if (_options.ExecutionMode !=
+            RepricingExecutionMode.Automatic)
+        {
+            _logger.LogInformation(
+                "Repricing decision for SKU {Sku} recorded in {ExecutionMode} mode. No automatic price update will be sent.",
+                product.Sku,
+                _options.ExecutionMode);
+
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(product.ProductType) ||
+            string.IsNullOrWhiteSpace(product.CurrencyCode))
+        {
+            repricingEvent.MarkFailed(
+                "Automatic repricing blocked because Amazon listing metadata is incomplete.");
+
+            _logger.LogWarning(
+                "Automatic repricing blocked for SKU {Sku}: ProductType or CurrencyCode is missing.",
+                product.Sku);
+
+            return;
+        }
+
+        var lastAppliedEvent = await dbContext.RepricingEvents
+            .Where(x =>
+                x.ProductId == product.Id &&
+                x.WasApplied &&
+                x.ProcessedAtUtc != null)
+            .OrderByDescending(x => x.ProcessedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var lastRepricedAtUtc =
+            lastAppliedEvent?.ProcessedAtUtc is DateTime processedAtUtc
+                ? new DateTimeOffset(
+                    DateTime.SpecifyKind(
+                        processedAtUtc,
+                        DateTimeKind.Utc))
+                : (DateTimeOffset?)null;
+
+        var guardResult = automaticRepricingGuard.Evaluate(
+            product.CurrentPrice.Value,
+            result.ProposedPrice,
+            DateTimeOffset.UtcNow,
+            lastRepricedAtUtc);
+
+        if (!guardResult.IsAllowed)
+        {
+            repricingEvent.MarkFailed(
+                $"Automatic repricing blocked: {guardResult.Reason}");
+
+            _logger.LogWarning(
+                "Automatic repricing guard blocked SKU {Sku}: {Reason}",
+                product.Sku,
+                guardResult.Reason);
+
+            return;
+        }
+
+        repricingEvent.ApproveAutomatically(
+            $"Automatic repricing approved. {guardResult.Reason}");
+
+        // Persist the pricing intent before performing the external side effect.
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        AmazonPriceUpdateResult updateResult;
+
+        try
+        {
+            updateResult = await amazonPriceUpdater.UpdatePriceAsync(
+                product.AmazonStore.SellerId,
+                product.Sku,
+                product.AmazonStore.MarketplaceId,
+                product.ProductType,
+                result.ProposedPrice,
+                product.CurrencyCode,
+                cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            repricingEvent.MarkFailed(
+                $"Amazon price update failed before acceptance: {exception.Message}");
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            throw;
+        }
+
+        if (!updateResult.Accepted)
+        {
+            var issues = updateResult.Issues.Count == 0
+                ? "Amazon rejected the price update."
+                : string.Join("; ", updateResult.Issues);
+
+            repricingEvent.MarkFailed(issues);
+
+            _logger.LogWarning(
+                "Amazon rejected automatic repricing for SKU {Sku}: {Issues}",
+                product.Sku,
+                issues);
+
+            return;
+        }
+
+        repricingEvent.MarkApplied(result.ProposedPrice);
+        product.CurrentPrice = result.ProposedPrice;
+
+        _logger.LogInformation(
+            "Automatic repricing submission accepted for SKU {Sku}. Price {OldPrice} -> {NewPrice}. SubmissionId: {SubmissionId}",
+            product.Sku,
+            repricingEvent.OldPrice,
+            result.ProposedPrice,
+            updateResult.SubmissionId);
         _logger.LogInformation(
             "SKU {Sku}: current {CurrentPrice}, featured offer {FeaturedOfferPrice}, proposed {ProposedPrice}, change {ShouldChange}",
             product.Sku,
