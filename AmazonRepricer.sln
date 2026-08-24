@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AmazonRepricer.Tests", "tes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AmazonRepricer.Sandbox", "src\AmazonRepricer.Sandbox\AmazonRepricer.Sandbox.csproj", "{84DD7448-2403-4BF2-B4ED-60A874B753A3}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AmazonRepricer.IntegrationTests", "tests\AmazonRepricer.IntegrationTests\AmazonRepricer.IntegrationTests.csproj", "{0CFE4B0B-0B2C-4F61-BBDC-4331A1E0B97B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -58,6 +60,10 @@ Global
 		{84DD7448-2403-4BF2-B4ED-60A874B753A3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{84DD7448-2403-4BF2-B4ED-60A874B753A3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{84DD7448-2403-4BF2-B4ED-60A874B753A3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0CFE4B0B-0B2C-4F61-BBDC-4331A1E0B97B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0CFE4B0B-0B2C-4F61-BBDC-4331A1E0B97B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0CFE4B0B-0B2C-4F61-BBDC-4331A1E0B97B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0CFE4B0B-0B2C-4F61-BBDC-4331A1E0B97B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{BE634BEC-4235-43E7-A8FD-08FF95E672D8} = {8FF6DB40-75C1-40C2-A772-3BECE1032B11}
@@ -67,5 +73,6 @@ Global
 		{29FD7DAC-C9AB-4C52-952D-24AE0154F629} = {8FF6DB40-75C1-40C2-A772-3BECE1032B11}
 		{0CD1E0F7-A88D-4CDD-914C-898FE5F7197D} = {DB1605DB-C7F6-4B49-918F-6D635BC66227}
 		{84DD7448-2403-4BF2-B4ED-60A874B753A3} = {8FF6DB40-75C1-40C2-A772-3BECE1032B11}
+		{0CFE4B0B-0B2C-4F61-BBDC-4331A1E0B97B} = {DB1605DB-C7F6-4B49-918F-6D635BC66227}
 	EndGlobalSection
 EndGlobal
