@@ -1,8 +1,5 @@
-using AmazonRepricer.Worker.Repricing;
-using AmazonRepricer.Application.Amazon;
-using AmazonRepricer.Application.Pricing;
-using AmazonRepricer.Domain.Entities;
 using AmazonRepricer.Infrastructure.Persistence;
+using AmazonRepricer.Worker.Repricing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -97,75 +94,40 @@ public sealed class Worker : BackgroundService
     private async Task ProcessProductsAsync(
         CancellationToken cancellationToken)
     {
-        using var scope = _scopeFactory.CreateScope();
+        List<Guid> productIds;
 
-        var dbContext =
-            scope.ServiceProvider.GetRequiredService<RepricerDbContext>();
+        using (var queryScope = _scopeFactory.CreateScope())
+        {
+            var dbContext = queryScope.ServiceProvider
+                .GetRequiredService<RepricerDbContext>();
 
-        var pricingEngine =
-            scope.ServiceProvider.GetRequiredService<IPricingEngine>();
-
-        var automaticRepricingExecutor =
-            scope.ServiceProvider.GetRequiredService<
-                IAutomaticRepricingExecutor>();
-
-        var amazonPricingProvider =
-            scope.ServiceProvider.GetRequiredService<IAmazonPricingProvider>();
-
-        var products = await dbContext.Products
-            .Include(x => x.PricingRule)
-            .Include(x => x.AmazonStore)
-            .Where(x =>
-                x.IsRepricingEnabled &&
-                x.PricingRule != null &&
-                x.PricingRule.IsActive &&
-                x.AmazonStore.IsActive)
-            .ToListAsync(cancellationToken);
+            productIds = await dbContext.Products
+                .AsNoTracking()
+                .Where(x =>
+                    x.IsRepricingEnabled &&
+                    x.PricingRule != null &&
+                    x.PricingRule.IsActive &&
+                    x.AmazonStore.IsActive)
+                .Select(x => x.Id)
+                .ToListAsync(cancellationToken);
+        }
 
         _logger.LogInformation(
             "Found {ProductCount} products eligible for repricing.",
-            products.Count);
+            productIds.Count);
 
-        foreach (var product in products)
+        foreach (var productId in productIds)
         {
             try
             {
-                await ProcessProductAsync(
-                    dbContext,
-                    pricingEngine,
-                    amazonPricingProvider,
-                    automaticRepricingExecutor,
-                    product,
-                    cancellationToken);
-            }
-            catch (Exception exception)
-            {
-                _logger.LogError(
-                    exception,
-                    "Failed to process product {Sku}.",
-                    product.Sku);
-            }
-        }
+                using var productScope =
+                    _scopeFactory.CreateScope();
 
-        await dbContext.SaveChangesAsync(cancellationToken);
-    }
+                var processor = productScope.ServiceProvider
+                    .GetRequiredService<IProductRepricingProcessor>();
 
-
-    private async Task<AmazonPricingInfo> GetPricingWithRetryAsync(
-        IAmazonPricingProvider amazonPricingProvider,
-        Product product,
-        CancellationToken cancellationToken)
-    {
-        var maxAttempts = Math.Max(1, _options.MaxRetryAttempts);
-        var baseDelaySeconds = Math.Max(1, _options.RetryDelaySeconds);
-
-        for (var attempt = 1; attempt <= maxAttempts; attempt++)
-        {
-            try
-            {
-                return await amazonPricingProvider.GetPricingAsync(
-                    product.Asin,
-                    product.Sku,
+                await processor.ProcessAsync(
+                    productId,
                     cancellationToken);
             }
             catch (OperationCanceledException)
@@ -174,145 +136,12 @@ public sealed class Worker : BackgroundService
                 throw;
             }
             catch (Exception exception)
-                when (attempt < maxAttempts)
             {
-                var delay = TimeSpan.FromSeconds(
-                    baseDelaySeconds * Math.Pow(2, attempt - 1));
-
-                _logger.LogWarning(
+                _logger.LogError(
                     exception,
-                    "Amazon pricing request failed for SKU {Sku}. Attempt {Attempt}/{MaxAttempts}. Retrying in {DelaySeconds} seconds.",
-                    product.Sku,
-                    attempt,
-                    maxAttempts,
-                    delay.TotalSeconds);
-
-                await Task.Delay(delay, cancellationToken);
+                    "Failed to process product {ProductId}.",
+                    productId);
             }
         }
-
-        throw new InvalidOperationException(
-            $"Amazon pricing request failed after {maxAttempts} attempts for SKU {product.Sku}.");
-    }
-
-
-    private async Task ProcessProductAsync(
-        RepricerDbContext dbContext,
-        IPricingEngine pricingEngine,
-        IAmazonPricingProvider amazonPricingProvider,
-        IAutomaticRepricingExecutor automaticRepricingExecutor,
-        Product product,
-        CancellationToken cancellationToken)
-    {
-        if (product.CurrentPrice is null ||
-            product.PricingRule is null)
-        {
-            return;
-        }
-
-        var pricingInfo =
-            await GetPricingWithRetryAsync(
-                amazonPricingProvider,
-                product,
-                cancellationToken);
-
-        var result = pricingEngine.Calculate(
-            product.CurrentPrice.Value,
-            pricingInfo.FeaturedOfferPrice,
-            pricingInfo.IsFeaturedOfferOurs,
-            product.PricingRule,
-            product.Cost);
-
-        var lastSnapshot = await dbContext.PriceSnapshots
-            .Where(x => x.ProductId == product.Id)
-            .OrderByDescending(x => x.CapturedAtUtc)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        var isDuplicateSnapshot =
-            lastSnapshot is not null &&
-            lastSnapshot.OurPrice == product.CurrentPrice.Value &&
-            lastSnapshot.FeaturedOfferPrice ==
-                pricingInfo.FeaturedOfferPrice &&
-            lastSnapshot.IsFeaturedOfferOurs ==
-                pricingInfo.IsFeaturedOfferOurs;
-
-        if (!isDuplicateSnapshot)
-        {
-            dbContext.PriceSnapshots.Add(
-                new PriceSnapshot
-                {
-                    ProductId = product.Id,
-                    OurPrice = product.CurrentPrice.Value,
-                    FeaturedOfferPrice =
-                        pricingInfo.FeaturedOfferPrice,
-                    IsFeaturedOfferOurs =
-                        pricingInfo.IsFeaturedOfferOurs
-                });
-        }
-        else
-        {
-            _logger.LogInformation(
-                "Duplicate price snapshot skipped for SKU {Sku}.",
-                product.Sku);
-        }
-
-        var lastEvent = await dbContext.RepricingEvents
-            .Where(x => x.ProductId == product.Id)
-            .OrderByDescending(x => x.CreatedAtUtc)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (!result.ShouldChangePrice)
-        {
-            _logger.LogInformation(
-                "No repricing required for SKU {Sku}. Reason: {Reason}",
-                product.Sku,
-                result.Reason);
-
-            return;
-        }
-
-        var isDuplicateDecision =
-            lastEvent is not null &&
-            lastEvent.OldPrice == product.CurrentPrice.Value &&
-            lastEvent.ProposedPrice == result.ProposedPrice &&
-            lastEvent.WasApplied == false;
-
-        if (isDuplicateDecision)
-        {
-            _logger.LogInformation(
-                "Duplicate repricing decision skipped for SKU {Sku}.",
-                product.Sku);
-
-            return;
-        }
-
-        var repricingEvent = new RepricingEvent
-        {
-            ProductId = product.Id,
-            OldPrice = product.CurrentPrice.Value,
-            ProposedPrice = result.ProposedPrice,
-            AppliedPrice = null,
-            WasApplied = false,
-            Reason = result.Reason
-        };
-
-        dbContext.RepricingEvents.Add(repricingEvent);
-
-        var executionResult =
-            await automaticRepricingExecutor.ExecuteAsync(
-                product,
-                repricingEvent,
-                cancellationToken);
-
-        _logger.LogInformation(
-            "SKU {Sku}: current {CurrentPrice}, featured offer {FeaturedOfferPrice}, proposed {ProposedPrice}, change {ShouldChange}, automatic attempted {WasAttempted}, automatic applied {WasApplied}, execution reason {ExecutionReason}",
-            product.Sku,
-            product.CurrentPrice,
-            pricingInfo.FeaturedOfferPrice,
-            result.ProposedPrice,
-            result.ShouldChangePrice,
-            executionResult.WasAttempted,
-            executionResult.WasApplied,
-            executionResult.Reason);
     }
 }
