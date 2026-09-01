@@ -194,6 +194,56 @@ public sealed class AutomaticRepricingExecutorTests
         Assert.Equal(99m, product.CurrentPrice);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_AlreadyProcessedEvent_DoesNotCallAmazonAgain()
+    {
+        await using var dbContext = CreateDbContext();
+
+        var updater = new FakeAmazonPriceUpdater
+        {
+            Result = new AmazonPriceUpdateResult(
+                true,
+                "submission-idempotency-001",
+                Array.Empty<string>())
+        };
+
+        var guard = new FakeAutomaticRepricingGuard(
+            RepricingGuardResult.Allow());
+
+        var executor = CreateExecutor(
+            dbContext,
+            updater,
+            guard,
+            RepricingExecutionMode.Automatic);
+
+        var (product, repricingEvent) = CreateScenario();
+
+        dbContext.Products.Add(product);
+        dbContext.RepricingEvents.Add(repricingEvent);
+        await dbContext.SaveChangesAsync();
+
+        var firstResult = await executor.ExecuteAsync(
+            product,
+            repricingEvent);
+
+        var duplicateResult = await executor.ExecuteAsync(
+            product,
+            repricingEvent);
+
+        Assert.True(firstResult.WasAttempted);
+        Assert.True(firstResult.WasApplied);
+
+        Assert.False(duplicateResult.WasAttempted);
+        Assert.False(duplicateResult.WasApplied);
+        Assert.Contains(
+            "already claimed or processed",
+            duplicateResult.Reason);
+
+        Assert.Equal(1, updater.CallCount);
+        Assert.Equal(RepricingStatus.Applied, repricingEvent.Status);
+        Assert.Equal(99m, product.CurrentPrice);
+    }
+
     private static AutomaticRepricingExecutor CreateExecutor(
         RepricerDbContext dbContext,
         IAmazonPriceUpdater updater,
