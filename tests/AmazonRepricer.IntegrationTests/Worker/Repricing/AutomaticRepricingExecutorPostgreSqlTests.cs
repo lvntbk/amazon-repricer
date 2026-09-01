@@ -233,6 +233,85 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
         Assert.Equal(100m, persistedPrice);
     }
 
+    [Fact]
+    public async Task ConcurrentDuplicateExecution_CallsAmazonOnlyOnce()
+    {
+        var scenario = await SeedScenarioAsync();
+
+        await using var firstContext = _database.CreateDbContext();
+        await using var duplicateContext = _database.CreateDbContext();
+
+        var (firstProduct, firstEvent) = await LoadScenarioAsync(
+            firstContext,
+            scenario);
+
+        var (duplicateProduct, duplicateEvent) = await LoadScenarioAsync(
+            duplicateContext,
+            scenario);
+
+        var amazonCallStarted =
+            new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var releaseAmazonCall =
+            new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var updater = new DelegatingAmazonPriceUpdater(
+            async () =>
+            {
+                amazonCallStarted.TrySetResult(true);
+                await releaseAmazonCall.Task;
+                return Accepted("submission-idempotency-postgresql");
+            });
+
+        var firstExecutionTask = CreateExecutor(
+                firstContext,
+                updater)
+            .ExecuteAsync(firstProduct, firstEvent);
+
+        await amazonCallStarted.Task.WaitAsync(
+            TimeSpan.FromSeconds(5));
+
+        AutomaticRepricingExecutionResult duplicateResult;
+
+        try
+        {
+            duplicateResult = await CreateExecutor(
+                    duplicateContext,
+                    updater)
+                .ExecuteAsync(duplicateProduct, duplicateEvent);
+        }
+        finally
+        {
+            releaseAmazonCall.TrySetResult(true);
+        }
+
+        var firstResult = await firstExecutionTask;
+
+        Assert.True(firstResult.WasAttempted);
+        Assert.True(firstResult.WasApplied);
+
+        Assert.False(duplicateResult.WasAttempted);
+        Assert.False(duplicateResult.WasApplied);
+        Assert.Contains(
+            "already claimed or processed",
+            duplicateResult.Reason);
+
+        Assert.Equal(1, updater.CallCount);
+
+        await using var verificationContext =
+            _database.CreateDbContext();
+
+        var persistedEvent = await verificationContext.RepricingEvents
+            .AsNoTracking()
+            .SingleAsync(x => x.Id == scenario.RepricingEventId);
+
+        Assert.Equal(RepricingStatus.Applied, persistedEvent.Status);
+        Assert.True(persistedEvent.WasApplied);
+        Assert.Equal(99m, persistedEvent.AppliedPrice);
+    }
+
     private async Task<ScenarioIds> SeedScenarioAsync()
     {
         var suffix = Guid.NewGuid().ToString("N");

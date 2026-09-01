@@ -1,5 +1,6 @@
 using AmazonRepricer.Application.Amazon;
 using AmazonRepricer.Domain.Entities;
+using AmazonRepricer.Domain.Enums;
 using AmazonRepricer.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -78,12 +79,58 @@ public sealed class AutomaticRepricingExecutor
                 $"Automatic repricing blocked: {guardResult.Reason}");
         }
 
-        repricingEvent.ApproveAutomatically(
-            $"Automatic repricing approved. {guardResult.Reason}");
+        var approvalReason =
+            $"Automatic repricing approved. {guardResult.Reason}";
 
-        // Persist the approved pricing intent before the external side effect.
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        if (_dbContext.Database.IsRelational())
+        {
+            // Persist a newly created pending event before claiming it.
+            await _dbContext.SaveChangesAsync(cancellationToken);
 
+            var reviewedAtUtc = DateTime.UtcNow;
+
+            var claimedRowCount = await _dbContext.RepricingEvents
+                .Where(x =>
+                    x.Id == repricingEvent.Id &&
+                    x.Status == RepricingStatus.Pending)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(
+                            x => x.Status,
+                            RepricingStatus.Approved)
+                        .SetProperty(
+                            x => x.ReviewNote,
+                            approvalReason)
+                        .SetProperty(
+                            x => x.ReviewedAtUtc,
+                            reviewedAtUtc),
+                    cancellationToken);
+
+            await _dbContext.Entry(repricingEvent)
+                .ReloadAsync(cancellationToken);
+
+            if (claimedRowCount == 0)
+            {
+                _logger.LogInformation(
+                    "Repricing event {RepricingEventId} was already claimed or processed.",
+                    repricingEvent.Id);
+
+                return AutomaticRepricingExecutionResult.Skipped(
+                    "Repricing event was already claimed or processed.");
+            }
+        }
+        else
+        {
+            // EF Core in-memory does not support ExecuteUpdateAsync.
+            if (repricingEvent.Status != RepricingStatus.Pending)
+            {
+                return AutomaticRepricingExecutionResult.Skipped(
+                    "Repricing event was already claimed or processed.");
+            }
+
+            repricingEvent.ApproveAutomatically(approvalReason);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
         AmazonPriceUpdateResult updateResult;
 
         try
