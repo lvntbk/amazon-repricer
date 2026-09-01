@@ -3,7 +3,7 @@
 [![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/tests-33%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-55%20passing-brightgreen)](#testing)
 [![Status](https://img.shields.io/badge/status-MVP%20in%20development-orange)](#project-status)
 
 A rule-based repricing backend for Amazon sellers, built with .NET 8, PostgreSQL, EF Core and background workers.
