@@ -29,6 +29,16 @@ public sealed class RepricingEvent
 
     public string? ApplicationError { get; set; }
 
+    public string? AmazonSubmissionId { get; set; }
+
+    public bool? AmazonSubmissionAccepted { get; set; }
+
+    public string? AmazonSubmissionIssues { get; set; }
+
+    public DateTime? SubmittedAtUtc { get; set; }
+
+    public DateTime? ReconciledAtUtc { get; set; }
+
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
     public Product Product { get; set; } = null!;
@@ -74,6 +84,58 @@ public sealed class RepricingEvent
         Status = RepricingStatus.Approved;
         ReviewNote = normalizedReason;
         ReviewedAtUtc = DateTime.UtcNow;
+    }
+
+    public void RecordAmazonSubmission(
+        bool accepted,
+        string? submissionId,
+        IEnumerable<string>? issues)
+    {
+        EnsureApproved();
+
+        var normalizedSubmissionId =
+            string.IsNullOrWhiteSpace(submissionId)
+                ? null
+                : submissionId.Trim();
+
+        if (normalizedSubmissionId?.Length > 200)
+        {
+            throw new ArgumentException(
+                "Amazon submission ID cannot exceed 200 characters.",
+                nameof(submissionId));
+        }
+
+        var normalizedIssues = issues?
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .ToArray()
+            ?? Array.Empty<string>();
+
+        var joinedIssues = normalizedIssues.Length == 0
+            ? null
+            : string.Join(" | ", normalizedIssues);
+
+        if (joinedIssues?.Length > 4000)
+        {
+            joinedIssues = joinedIssues[..4000];
+        }
+
+        AmazonSubmissionId = normalizedSubmissionId;
+        AmazonSubmissionAccepted = accepted;
+        AmazonSubmissionIssues = joinedIssues;
+        SubmittedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MarkReconciled()
+    {
+        if (Status != RepricingStatus.Applied &&
+            Status != RepricingStatus.Failed)
+        {
+            throw new InvalidOperationException(
+                "Only finalized events can be marked as reconciled.");
+        }
+
+        ReconciledAtUtc = DateTime.UtcNow;
     }
 
     public void MarkApplied(decimal appliedPrice)

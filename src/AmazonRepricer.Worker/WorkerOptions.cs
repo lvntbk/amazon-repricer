@@ -18,4 +18,8 @@ public sealed class WorkerOptions
     public decimal MaxPriceChangePercentage { get; set; } = 10m;
 
     public int MinimumRepricingIntervalSeconds { get; set; } = 300;
+
+    public int ReconciliationIntervalSeconds { get; set; } = 60;
+
+    public int ReconciliationBatchSize { get; set; } = 100;
 }

@@ -82,6 +82,13 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
         Assert.Equal(99m, persistedEvent.AppliedPrice);
         Assert.Null(persistedEvent.ApplicationError);
         Assert.NotNull(persistedEvent.ProcessedAtUtc);
+        Assert.Equal(
+            "submission-postgresql-001",
+            persistedEvent.AmazonSubmissionId);
+        Assert.True(persistedEvent.AmazonSubmissionAccepted);
+        Assert.Null(persistedEvent.AmazonSubmissionIssues);
+        Assert.NotNull(persistedEvent.SubmittedAtUtc);
+        Assert.Null(persistedEvent.ReconciledAtUtc);
         Assert.Equal(99m, persistedPrice);
         Assert.Equal(1, updater.CallCount);
     }
@@ -188,6 +195,13 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
         Assert.False(persistedEvent.WasApplied);
         Assert.Null(persistedEvent.AppliedPrice);
         Assert.Null(persistedEvent.ProcessedAtUtc);
+        Assert.Equal(
+            "submission-before-db-failure",
+            persistedEvent.AmazonSubmissionId);
+        Assert.True(persistedEvent.AmazonSubmissionAccepted);
+        Assert.Null(persistedEvent.AmazonSubmissionIssues);
+        Assert.NotNull(persistedEvent.SubmittedAtUtc);
+        Assert.Null(persistedEvent.ReconciledAtUtc);
         Assert.Equal(100m, persistedPrice);
         Assert.Equal(1, updater.CallCount);
     }

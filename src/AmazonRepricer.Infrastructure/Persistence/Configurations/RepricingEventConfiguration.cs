@@ -40,6 +40,12 @@ public sealed class RepricingEventConfiguration
         builder.Property(x => x.ApplicationError)
             .HasMaxLength(1000);
 
+        builder.Property(x => x.AmazonSubmissionId)
+            .HasMaxLength(200);
+
+        builder.Property(x => x.AmazonSubmissionIssues)
+            .HasMaxLength(4000);
+
         builder.HasIndex(x => new
         {
             x.ProductId,
@@ -50,6 +56,13 @@ public sealed class RepricingEventConfiguration
         {
             x.Status,
             x.CreatedAtUtc
+        });
+
+        builder.HasIndex(x => new
+        {
+            x.Status,
+            x.AmazonSubmissionAccepted,
+            x.SubmittedAtUtc
         });
 
         builder.HasOne(x => x.Product)

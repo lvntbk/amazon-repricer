@@ -163,6 +163,14 @@ public sealed class AutomaticRepricingExecutor
                 "Amazon price update failed.");
         }
 
+        repricingEvent.RecordAmazonSubmission(
+            updateResult.Accepted,
+            updateResult.SubmissionId,
+            updateResult.Issues);
+
+        // Persist the external result before finalizing local state.
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
         if (!updateResult.Accepted)
         {
             var issues = updateResult.Issues.Count == 0

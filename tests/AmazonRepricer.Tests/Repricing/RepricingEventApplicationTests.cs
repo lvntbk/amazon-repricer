@@ -73,6 +73,68 @@ public sealed class RepricingEventApplicationTests
             () => repricingEvent.MarkFailed("   "));
     }
 
+    [Fact]
+    public void RecordAmazonSubmission_ShouldPersistNormalizedResult()
+    {
+        var repricingEvent = CreateApprovedEvent();
+
+        repricingEvent.RecordAmazonSubmission(
+            accepted: true,
+            submissionId: " submission-001 ",
+            issues: new[]
+            {
+                " warning: price validation ",
+                " ",
+                "info: accepted"
+            });
+
+        Assert.Equal(
+            "submission-001",
+            repricingEvent.AmazonSubmissionId);
+        Assert.True(repricingEvent.AmazonSubmissionAccepted);
+        Assert.Equal(
+            "warning: price validation | info: accepted",
+            repricingEvent.AmazonSubmissionIssues);
+        Assert.NotNull(repricingEvent.SubmittedAtUtc);
+        Assert.Null(repricingEvent.ReconciledAtUtc);
+    }
+
+    [Fact]
+    public void RecordAmazonSubmission_ShouldRejectPendingEvent()
+    {
+        var repricingEvent = new RepricingEvent();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => repricingEvent.RecordAmazonSubmission(
+                accepted: true,
+                submissionId: "submission-001",
+                issues: Array.Empty<string>()));
+
+        Assert.Contains(
+            "Only approved events",
+            exception.Message);
+    }
+
+    [Fact]
+    public void MarkReconciled_ShouldOnlyAcceptFinalizedEvent()
+    {
+        var pendingEvent = new RepricingEvent();
+
+        Assert.Throws<InvalidOperationException>(
+            pendingEvent.MarkReconciled);
+
+        var appliedEvent = CreateApprovedEvent();
+        appliedEvent.RecordAmazonSubmission(
+            accepted: true,
+            submissionId: "submission-001",
+            issues: Array.Empty<string>());
+        appliedEvent.MarkApplied(appliedEvent.ProposedPrice);
+
+        appliedEvent.MarkReconciled();
+
+        Assert.NotNull(appliedEvent.ReconciledAtUtc);
+    }
+
     private static RepricingEvent CreateApprovedEvent()
     {
         var repricingEvent = new RepricingEvent

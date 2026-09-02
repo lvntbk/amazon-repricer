@@ -64,6 +64,11 @@ public sealed class RepricingEventsController : ControllerBase
                 x.ReviewedAtUtc,
                 x.ProcessedAtUtc,
                 x.ApplicationError,
+                x.AmazonSubmissionId,
+                x.AmazonSubmissionAccepted,
+                x.AmazonSubmissionIssues,
+                x.SubmittedAtUtc,
+                x.ReconciledAtUtc,
                 x.CreatedAtUtc
             })
             .ToListAsync(cancellationToken);
@@ -93,6 +98,11 @@ public sealed class RepricingEventsController : ControllerBase
                 x.ReviewedAtUtc,
                 x.ProcessedAtUtc,
                 x.ApplicationError,
+                x.AmazonSubmissionId,
+                x.AmazonSubmissionAccepted,
+                x.AmazonSubmissionIssues,
+                x.SubmittedAtUtc,
+                x.ReconciledAtUtc,
                 x.CreatedAtUtc
             })
             .FirstOrDefaultAsync(cancellationToken);
@@ -211,6 +221,14 @@ public sealed class RepricingEventsController : ControllerBase
                 "or returned an HTTP error.");
         }
 
+        repricingEvent.RecordAmazonSubmission(
+            updateResult.Accepted,
+            updateResult.SubmissionId,
+            updateResult.Issues);
+
+        // Persist the external result before finalizing local state.
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
         if (!updateResult.Accepted)
         {
             var applicationError =
@@ -232,8 +250,11 @@ public sealed class RepricingEventsController : ControllerBase
             {
                 repricingEvent.Id,
                 Status = repricingEvent.Status.ToString(),
-                updateResult.SubmissionId,
-                Issues = updateResult.Issues,
+                SubmissionId = repricingEvent.AmazonSubmissionId,
+                SubmissionAccepted =
+                    repricingEvent.AmazonSubmissionAccepted,
+                Issues = repricingEvent.AmazonSubmissionIssues,
+                repricingEvent.SubmittedAtUtc,
                 repricingEvent.ProcessedAtUtc
             });
         }
@@ -255,7 +276,10 @@ public sealed class RepricingEventsController : ControllerBase
             OldPrice = repricingEvent.OldPrice,
             NewPrice = product.CurrentPrice,
             Status = repricingEvent.Status.ToString(),
-            updateResult.SubmissionId,
+            SubmissionId = repricingEvent.AmazonSubmissionId,
+            SubmissionAccepted =
+                repricingEvent.AmazonSubmissionAccepted,
+            repricingEvent.SubmittedAtUtc,
             repricingEvent.ProcessedAtUtc
         });
     }

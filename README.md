@@ -3,7 +3,7 @@
 [![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/tests-55%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-62%20passing-brightgreen)](#testing)
 [![Status](https://img.shields.io/badge/status-MVP%20in%20development-orange)](#project-status)
 
 A rule-based repricing backend for Amazon sellers, built with .NET 8, PostgreSQL, EF Core and background workers.
@@ -44,6 +44,9 @@ This design keeps automated pricing decisions observable and allows manual appro
 - Approved price application through the Listings API
 - Stale-price protection before execution
 - Applied and failed event tracking
+- Persistent Amazon submission ID, acceptance and issue tracking
+- Atomic automatic-repricing claim for duplicate prevention
+- Background reconciliation of incomplete submission results
 - PostgreSQL audit history
 - Local Amazon SP-API Sandbox
 - Unit tests for pricing, authentication, Amazon clients and domain transitions
@@ -321,7 +324,9 @@ Build succeeded.
 0 Error(s)
 
 Failed: 0
-Passed: 33
+Unit tests: 53
+PostgreSQL integration tests: 9
+Passed: 62
 Skipped: 0
 ```
 
@@ -335,6 +340,9 @@ The tests currently cover:
 - Amazon rejection responses
 - Repricing-event state transitions
 - Invalid and duplicate operations
+- Atomic duplicate-execution prevention
+- Persistent Amazon submission results
+- Accepted and rejected submission reconciliation
 
 ## Security and Reliability
 
@@ -348,16 +356,16 @@ The current implementation includes:
 - Duplicate snapshot and decision prevention
 - Explicit approval before price execution
 - Restricted event state transitions
+- Atomic automatic-repricing idempotency
+- Persistent Amazon submission tracking
+- Partial-failure reconciliation with a configurable grace period
 
 Before production use, the following controls are still required:
 
 - Authentication and role-based authorization
 - Secret-manager integration
 - Request rate limiting
-- Optimistic concurrency for apply operations
-- Persistent Amazon submission tracking
-- Idempotency keys
-- Reconciliation after partial failures
+- Optimistic concurrency for manual apply operations
 - Structured observability and alerting
 
 ## Project Status
@@ -375,14 +383,18 @@ Completed:
 - Listings price-submission flow
 - Local end-to-end SP-API Sandbox
 - Automated test suite
+- Atomic automatic-repricing idempotency
+- Persistent Amazon submission-result tracking
+- Background partial-failure reconciliation
 
 The current Amazon flow has been validated against the local Sandbox. A controlled pilot with real seller credentials is planned before production automation.
 
 ## Roadmap
 
-- [ ] Persist Amazon submission IDs and issues
-- [ ] Add optimistic concurrency and idempotency
-- [ ] Add submission reconciliation worker
+- [x] Persist Amazon submission IDs and issues
+- [x] Add automatic-repricing idempotency
+- [ ] Add optimistic concurrency to manual apply
+- [x] Add submission reconciliation worker
 - [ ] Add API authentication and authorization
 - [ ] Add structured logs, metrics and health checks
 - [ ] Add multi-store credential isolation

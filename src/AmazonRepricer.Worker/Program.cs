@@ -30,6 +30,10 @@ builder.Services.AddScoped<
     IProductRepricingProcessor,
     ProductRepricingProcessor>();
 
+builder.Services.AddScoped<
+    IRepricingReconciliationService,
+    RepricingReconciliationService>();
+
 var useMockAmazon =
     builder.Configuration.GetValue<bool>(
         $"{AmazonSpApiOptions.SectionName}:UseMock");
@@ -48,6 +52,7 @@ else
 }
 
 builder.Services.AddHostedService<Worker>();
+builder.Services.AddHostedService<RepricingReconciliationWorker>();
 
 var host = builder.Build();
 
