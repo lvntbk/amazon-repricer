@@ -7,5 +7,6 @@ public enum RepricingStatus
     Approved = 2,
     Rejected = 3,
     Applied = 4,
-    Failed = 5
+    Failed = 5,
+    Applying = 6
 }

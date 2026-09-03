@@ -31,7 +31,7 @@ public sealed class ProductRepricingProcessorPostgreSqlTests
                 FeaturedOfferPrice: 99.90m,
                 IsFeaturedOfferOurs: false));
 
-        var approvedIntentObserved = false;
+        var applicationClaimObserved = false;
         var snapshotObservedBeforeSubmission = false;
 
         var priceUpdater = new RecordingAmazonPriceUpdater(
@@ -40,11 +40,11 @@ public sealed class ProductRepricingProcessorPostgreSqlTests
                 await using var observationContext =
                     _database.CreateDbContext();
 
-                approvedIntentObserved = await observationContext
+                applicationClaimObserved = await observationContext
                     .RepricingEvents
                     .AnyAsync(x =>
                         x.ProductId == scenario.ProductId &&
-                        x.Status == RepricingStatus.Approved);
+                        x.Status == RepricingStatus.Applying);
 
                 snapshotObservedBeforeSubmission = await observationContext
                     .PriceSnapshots
@@ -104,7 +104,7 @@ public sealed class ProductRepricingProcessorPostgreSqlTests
             .AsNoTracking()
             .SingleAsync(x => x.ProductId == scenario.ProductId);
 
-        Assert.True(approvedIntentObserved);
+        Assert.True(applicationClaimObserved);
         Assert.True(snapshotObservedBeforeSubmission);
         Assert.Equal(1, pricingProvider.CallCount);
         Assert.Equal(1, priceUpdater.CallCount);

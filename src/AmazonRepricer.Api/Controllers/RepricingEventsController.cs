@@ -192,6 +192,53 @@ public sealed class RepricingEventsController : ControllerBase
             });
         }
 
+        if (_dbContext.Database.IsRelational())
+        {
+            var claimedRowCount = await _dbContext.RepricingEvents
+                .Where(x =>
+                    x.Id == repricingEvent.Id &&
+                    x.Status == RepricingStatus.Approved)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(
+                        x => x.Status,
+                        RepricingStatus.Applying),
+                    cancellationToken);
+
+            // ExecuteUpdate bypasses EF Core's change tracker.
+            await _dbContext.Entry(repricingEvent)
+                .ReloadAsync(cancellationToken);
+
+            if (claimedRowCount == 0)
+            {
+                _logger.LogInformation(
+                    "Manual apply claim rejected for repricing event " +
+                    "{RepricingEventId}. Current status: {Status}.",
+                    repricingEvent.Id,
+                    repricingEvent.Status);
+
+                return Conflict(new
+                {
+                    error =
+                        "Repricing event was already claimed or processed.",
+                    currentStatus =
+                        repricingEvent.Status.ToString()
+                });
+            }
+        }
+        else
+        {
+            // EF Core in-memory does not support ExecuteUpdateAsync.
+            try
+            {
+                repricingEvent.BeginApplication();
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+            catch (InvalidOperationException exception)
+            {
+                return Conflict(exception.Message);
+            }
+        }
+
         AmazonPriceUpdateResult updateResult;
 
         try

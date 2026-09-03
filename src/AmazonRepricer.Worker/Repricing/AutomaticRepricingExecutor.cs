@@ -97,7 +97,7 @@ public sealed class AutomaticRepricingExecutor
                     setters => setters
                         .SetProperty(
                             x => x.Status,
-                            RepricingStatus.Approved)
+                            RepricingStatus.Applying)
                         .SetProperty(
                             x => x.ReviewNote,
                             approvalReason)
@@ -129,6 +129,7 @@ public sealed class AutomaticRepricingExecutor
             }
 
             repricingEvent.ApproveAutomatically(approvalReason);
+            repricingEvent.BeginApplication();
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
         AmazonPriceUpdateResult updateResult;

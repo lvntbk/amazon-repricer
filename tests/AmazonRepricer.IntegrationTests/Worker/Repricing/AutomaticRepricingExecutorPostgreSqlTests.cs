@@ -24,10 +24,10 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
     }
 
     [Fact]
-    public async Task AcceptedUpdate_PersistsApprovedIntentBeforeAmazonCall_ThenAppliesPrice()
+    public async Task AcceptedUpdate_PersistsApplicationClaimBeforeAmazonCall_ThenAppliesPrice()
     {
         var scenario = await SeedScenarioAsync();
-        var approvedIntentWasPersisted = false;
+        var applicationClaimWasPersisted = false;
 
         var updater = new DelegatingAmazonPriceUpdater(
             async () =>
@@ -41,8 +41,8 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
                     .Select(x => x.Status)
                     .SingleAsync();
 
-                approvedIntentWasPersisted =
-                    persistedStatus == RepricingStatus.Approved;
+                applicationClaimWasPersisted =
+                    persistedStatus == RepricingStatus.Applying;
 
                 return Accepted("submission-postgresql-001");
             });
@@ -76,7 +76,7 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
             .Select(x => x.CurrentPrice)
             .SingleAsync();
 
-        Assert.True(approvedIntentWasPersisted);
+        Assert.True(applicationClaimWasPersisted);
         Assert.Equal(RepricingStatus.Applied, persistedEvent.Status);
         Assert.True(persistedEvent.WasApplied);
         Assert.Equal(99m, persistedEvent.AppliedPrice);
@@ -159,7 +159,7 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
     }
 
     [Fact]
-    public async Task FinalPersistenceFailure_LeavesApprovedIntent_ForReconciliation()
+    public async Task FinalPersistenceFailure_LeavesApplicationClaim_ForReconciliation()
     {
         var scenario = await SeedScenarioAsync();
         var updater = new DelegatingAmazonPriceUpdater(
@@ -191,7 +191,7 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
             .Select(x => x.CurrentPrice)
             .SingleAsync();
 
-        Assert.Equal(RepricingStatus.Approved, persistedEvent.Status);
+        Assert.Equal(RepricingStatus.Applying, persistedEvent.Status);
         Assert.False(persistedEvent.WasApplied);
         Assert.Null(persistedEvent.AppliedPrice);
         Assert.Null(persistedEvent.ProcessedAtUtc);

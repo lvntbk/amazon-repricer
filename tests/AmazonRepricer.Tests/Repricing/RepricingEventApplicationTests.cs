@@ -135,6 +135,86 @@ public sealed class RepricingEventApplicationTests
         Assert.NotNull(appliedEvent.ReconciledAtUtc);
     }
 
+    [Fact]
+    public void BeginApplication_ShouldMoveApprovedEventToApplying()
+    {
+        var repricingEvent = CreateApprovedEvent();
+
+        repricingEvent.BeginApplication();
+
+        Assert.Equal(
+            RepricingStatus.Applying,
+            repricingEvent.Status);
+    }
+
+    [Fact]
+    public void BeginApplication_ShouldRejectPendingEvent()
+    {
+        var repricingEvent = new RepricingEvent();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            repricingEvent.BeginApplication);
+
+        Assert.Contains(
+            "Only approved events",
+            exception.Message);
+    }
+
+    [Fact]
+    public void ApplyingEvent_ShouldAllowAcceptedCompletion()
+    {
+        var repricingEvent = CreateApprovedEvent();
+        repricingEvent.BeginApplication();
+
+        repricingEvent.RecordAmazonSubmission(
+            accepted: true,
+            submissionId: "submission-applying-001",
+            issues: Array.Empty<string>());
+
+        repricingEvent.MarkApplied(
+            repricingEvent.ProposedPrice);
+
+        Assert.Equal(
+            RepricingStatus.Applied,
+            repricingEvent.Status);
+        Assert.True(repricingEvent.WasApplied);
+        Assert.Equal(
+            "submission-applying-001",
+            repricingEvent.AmazonSubmissionId);
+        Assert.True(repricingEvent.AmazonSubmissionAccepted);
+        Assert.NotNull(repricingEvent.SubmittedAtUtc);
+        Assert.NotNull(repricingEvent.ProcessedAtUtc);
+    }
+
+    [Fact]
+    public void ApplyingEvent_ShouldAllowRejectedCompletion()
+    {
+        var repricingEvent = CreateApprovedEvent();
+        repricingEvent.BeginApplication();
+
+        repricingEvent.RecordAmazonSubmission(
+            accepted: false,
+            submissionId: "submission-rejected-001",
+            issues: new[] { "Price rejected." });
+
+        repricingEvent.MarkFailed(
+            "Amazon rejected the price update.");
+
+        Assert.Equal(
+            RepricingStatus.Failed,
+            repricingEvent.Status);
+        Assert.False(repricingEvent.WasApplied);
+        Assert.Equal(
+            "submission-rejected-001",
+            repricingEvent.AmazonSubmissionId);
+        Assert.False(repricingEvent.AmazonSubmissionAccepted);
+        Assert.Equal(
+            "Price rejected.",
+            repricingEvent.AmazonSubmissionIssues);
+        Assert.NotNull(repricingEvent.SubmittedAtUtc);
+        Assert.NotNull(repricingEvent.ProcessedAtUtc);
+    }
+
     private static RepricingEvent CreateApprovedEvent()
     {
         var repricingEvent = new RepricingEvent

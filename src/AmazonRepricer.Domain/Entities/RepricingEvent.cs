@@ -86,12 +86,19 @@ public sealed class RepricingEvent
         ReviewedAtUtc = DateTime.UtcNow;
     }
 
+    public void BeginApplication()
+    {
+        EnsureApproved();
+
+        Status = RepricingStatus.Applying;
+    }
+
     public void RecordAmazonSubmission(
         bool accepted,
         string? submissionId,
         IEnumerable<string>? issues)
     {
-        EnsureApproved();
+        EnsureReadyForApplicationCompletion();
 
         var normalizedSubmissionId =
             string.IsNullOrWhiteSpace(submissionId)
@@ -140,7 +147,7 @@ public sealed class RepricingEvent
 
     public void MarkApplied(decimal appliedPrice)
     {
-        EnsureApproved();
+        EnsureReadyForApplicationCompletion();
 
         if (appliedPrice <= 0)
         {
@@ -158,7 +165,7 @@ public sealed class RepricingEvent
 
     public void MarkFailed(string error)
     {
-        EnsureApproved();
+        EnsureReadyForApplicationCompletion();
 
         if (string.IsNullOrWhiteSpace(error))
         {
@@ -181,6 +188,17 @@ public sealed class RepricingEvent
         WasApplied = false;
         ApplicationError = normalizedError;
         ProcessedAtUtc = DateTime.UtcNow;
+    }
+
+    private void EnsureReadyForApplicationCompletion()
+    {
+        if (Status != RepricingStatus.Approved &&
+            Status != RepricingStatus.Applying)
+        {
+            throw new InvalidOperationException(
+                $"Only approved events or events being applied " +
+                $"can be processed. Current status: {Status}.");
+        }
     }
 
     private void EnsureApproved()

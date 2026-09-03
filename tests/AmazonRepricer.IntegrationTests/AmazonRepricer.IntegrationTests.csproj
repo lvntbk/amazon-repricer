@@ -28,6 +28,7 @@
     <ProjectReference Include="..\..\src\AmazonRepricer.Domain\AmazonRepricer.Domain.csproj" />
     <ProjectReference Include="..\..\src\AmazonRepricer.Infrastructure\AmazonRepricer.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\AmazonRepricer.Worker\AmazonRepricer.Worker.csproj" />
+    <ProjectReference Include="..\..\src\AmazonRepricer.Api\AmazonRepricer.Api.csproj" />
   </ItemGroup>
 
 </Project>

@@ -32,7 +32,8 @@ public sealed class RepricingReconciliationService
         var candidates = await _dbContext.RepricingEvents
             .Include(x => x.Product)
             .Where(x =>
-                x.Status == RepricingStatus.Approved &&
+                (x.Status == RepricingStatus.Approved ||
+                    x.Status == RepricingStatus.Applying) &&
                 x.AmazonSubmissionAccepted != null &&
                 x.SubmittedAtUtc != null &&
                 x.ReconciledAtUtc == null)

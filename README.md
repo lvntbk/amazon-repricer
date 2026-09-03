@@ -3,7 +3,7 @@
 [![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/tests-62%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-67%20passing-brightgreen)](#testing)
 [![Status](https://img.shields.io/badge/status-MVP%20in%20development-orange)](#project-status)
 
 A rule-based repricing backend for Amazon sellers, built with .NET 8, PostgreSQL, EF Core and background workers.
@@ -324,9 +324,9 @@ Build succeeded.
 0 Error(s)
 
 Failed: 0
-Unit tests: 53
-PostgreSQL integration tests: 9
-Passed: 62
+Unit tests: 57
+PostgreSQL integration tests: 10
+Passed: 67
 Skipped: 0
 ```
 
@@ -357,6 +357,7 @@ The current implementation includes:
 - Explicit approval before price execution
 - Restricted event state transitions
 - Atomic automatic-repricing idempotency
+- Atomic manual-apply claim for concurrent request prevention
 - Persistent Amazon submission tracking
 - Partial-failure reconciliation with a configurable grace period
 
@@ -365,7 +366,6 @@ Before production use, the following controls are still required:
 - Authentication and role-based authorization
 - Secret-manager integration
 - Request rate limiting
-- Optimistic concurrency for manual apply operations
 - Structured observability and alerting
 
 ## Project Status
@@ -384,6 +384,7 @@ Completed:
 - Local end-to-end SP-API Sandbox
 - Automated test suite
 - Atomic automatic-repricing idempotency
+- Atomic manual-apply claim
 - Persistent Amazon submission-result tracking
 - Background partial-failure reconciliation
 
@@ -393,7 +394,7 @@ The current Amazon flow has been validated against the local Sandbox. A controll
 
 - [x] Persist Amazon submission IDs and issues
 - [x] Add automatic-repricing idempotency
-- [ ] Add optimistic concurrency to manual apply
+- [x] Add atomic claim to manual apply
 - [x] Add submission reconciliation worker
 - [ ] Add API authentication and authorization
 - [ ] Add structured logs, metrics and health checks
