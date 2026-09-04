@@ -65,8 +65,6 @@ public sealed class ProductRepricingProcessorPostgreSqlTests
             var options = Options.Create(new WorkerOptions
             {
                 ExecutionMode = RepricingExecutionMode.Automatic,
-                MaxRetryAttempts = 3,
-                RetryDelaySeconds = 1,
                 MaxPriceChangePercentage = 10m,
                 MinimumRepricingIntervalSeconds = 0
             });

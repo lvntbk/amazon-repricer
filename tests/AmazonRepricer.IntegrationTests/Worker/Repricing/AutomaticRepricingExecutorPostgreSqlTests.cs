@@ -127,13 +127,20 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
         Assert.Equal(1, updater.CallCount);
     }
 
-    [Fact]
-    public async Task UpdaterException_PersistsFailedEvent_AndKeepsCurrentPrice()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AmbiguousUpdaterException_LeavesApplyingEvent_AndPreventsDuplicateSubmission(
+        bool simulateTimeout)
     {
         var scenario = await SeedScenarioAsync();
+
         var updater = new DelegatingAmazonPriceUpdater(
-            () => throw new HttpRequestException(
-                "Simulated Amazon timeout."));
+            () => simulateTimeout
+                ? throw new TaskCanceledException(
+                    "Simulated Amazon timeout.")
+                : throw new HttpRequestException(
+                    "Simulated Amazon transport failure."));
 
         await using (var executionContext =
             _database.CreateDbContext())
@@ -151,9 +158,143 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
             Assert.False(result.WasApplied);
         }
 
-        await AssertFailedStateAsync(
-            scenario,
-            "Simulated Amazon timeout.");
+        await using (var verificationContext =
+            _database.CreateDbContext())
+        {
+            var persistedEvent =
+                await verificationContext.RepricingEvents
+                    .AsNoTracking()
+                    .SingleAsync(
+                        x => x.Id == scenario.RepricingEventId);
+
+            var persistedPrice =
+                await verificationContext.Products
+                    .AsNoTracking()
+                    .Where(x => x.Id == scenario.ProductId)
+                    .Select(x => x.CurrentPrice)
+                    .SingleAsync();
+
+            Assert.Equal(
+                RepricingStatus.Applying,
+                persistedEvent.Status);
+
+            Assert.False(persistedEvent.WasApplied);
+            Assert.Null(persistedEvent.AppliedPrice);
+            Assert.Null(persistedEvent.ProcessedAtUtc);
+            Assert.Null(persistedEvent.AmazonSubmissionId);
+            Assert.Null(persistedEvent.AmazonSubmissionAccepted);
+            Assert.Null(persistedEvent.SubmittedAtUtc);
+            Assert.Equal(100m, persistedPrice);
+        }
+
+        await using (var duplicateContext =
+            _database.CreateDbContext())
+        {
+            var (product, repricingEvent) = await LoadScenarioAsync(
+                duplicateContext,
+                scenario);
+
+            var duplicateResult = await CreateExecutor(
+                    duplicateContext,
+                    updater)
+                .ExecuteAsync(product, repricingEvent);
+
+            Assert.False(duplicateResult.WasAttempted);
+            Assert.False(duplicateResult.WasApplied);
+
+            Assert.Contains(
+                "already claimed or processed",
+                duplicateResult.Reason);
+        }
+
+        Assert.Equal(1, updater.CallCount);
+    }
+
+    [Fact]
+    public async Task CallerCancellation_IsRethrown_AndLeavesApplyingClaim()
+    {
+        var scenario = await SeedScenarioAsync();
+
+        using var cancellationSource =
+            new CancellationTokenSource();
+
+        var updater = new DelegatingAmazonPriceUpdater(
+            () =>
+            {
+                cancellationSource.Cancel();
+
+                throw new OperationCanceledException(
+                    cancellationSource.Token);
+            });
+
+        await using (var executionContext =
+            _database.CreateDbContext())
+        {
+            var (product, repricingEvent) =
+                await LoadScenarioAsync(
+                    executionContext,
+                    scenario);
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => CreateExecutor(
+                        executionContext,
+                        updater)
+                    .ExecuteAsync(
+                        product,
+                        repricingEvent,
+                        cancellationSource.Token));
+        }
+
+        await using (var verificationContext =
+            _database.CreateDbContext())
+        {
+            var persistedEvent =
+                await verificationContext.RepricingEvents
+                    .AsNoTracking()
+                    .SingleAsync(
+                        x => x.Id == scenario.RepricingEventId);
+
+            var persistedPrice =
+                await verificationContext.Products
+                    .AsNoTracking()
+                    .Where(x => x.Id == scenario.ProductId)
+                    .Select(x => x.CurrentPrice)
+                    .SingleAsync();
+
+            Assert.Equal(
+                RepricingStatus.Applying,
+                persistedEvent.Status);
+
+            Assert.False(persistedEvent.WasApplied);
+            Assert.Null(persistedEvent.AppliedPrice);
+            Assert.Null(persistedEvent.ProcessedAtUtc);
+            Assert.Equal(100m, persistedPrice);
+        }
+
+        await using (var duplicateContext =
+            _database.CreateDbContext())
+        {
+            var (product, repricingEvent) =
+                await LoadScenarioAsync(
+                    duplicateContext,
+                    scenario);
+
+            var duplicateResult =
+                await CreateExecutor(
+                        duplicateContext,
+                        updater)
+                    .ExecuteAsync(
+                        product,
+                        repricingEvent,
+                        CancellationToken.None);
+
+            Assert.False(duplicateResult.WasAttempted);
+            Assert.False(duplicateResult.WasApplied);
+
+            Assert.Contains(
+                "already claimed or processed",
+                duplicateResult.Reason);
+        }
 
         Assert.Equal(1, updater.CallCount);
     }

@@ -26,18 +26,6 @@ public sealed class Worker : BackgroundService
                 "Worker interval must be greater than zero.");
         }
 
-        if (_options.MaxRetryAttempts <= 0)
-        {
-            throw new InvalidOperationException(
-                "Maximum retry attempts must be greater than zero.");
-        }
-
-        if (_options.RetryDelaySeconds <= 0)
-        {
-            throw new InvalidOperationException(
-                "Retry delay must be greater than zero.");
-        }
-
         if (_options.MaxPriceChangePercentage <= 0 ||
             _options.MaxPriceChangePercentage > 100)
         {

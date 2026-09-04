@@ -102,6 +102,33 @@ public sealed class AmazonListingsPriceUpdaterTests
     }
 
     [Fact]
+    public async Task UpdatePriceAsync_ShouldReportUncertainOutcome_WhenSuccessfulResponseCannotBeParsed()
+    {
+        var handler = new FakeHttpMessageHandler(
+            HttpStatusCode.Accepted,
+            "{ invalid-json");
+
+        var updater = CreateUpdater(handler);
+
+        var exception =
+            await Assert.ThrowsAsync<HttpRequestException>(
+                () => updater.UpdatePriceAsync(
+                    "LOCAL-SELLER-001",
+                    "TEST-SKU-001",
+                    "A33AVAJ2PDY3EV",
+                    "PRODUCT",
+                    99m,
+                    "TRY"));
+
+        Assert.Contains(
+            "outcome is uncertain",
+            exception.Message,
+            StringComparison.OrdinalIgnoreCase);
+
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
     public async Task UpdatePriceAsync_ShouldRejectNonPositivePrice()
     {
         var handler = new FakeHttpMessageHandler(

@@ -146,6 +146,40 @@ public sealed class AutomaticRepricingExecutor
                     product.CurrencyCode!,
                     cancellationToken);
         }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException exception)
+        {
+            _logger.LogError(
+                exception,
+                "Amazon price submission timed out or was canceled " +
+                "after dispatch for SKU {Sku}. " +
+                "Repricing event {RepricingEventId} remains Applying.",
+                product.Sku,
+                repricingEvent.Id);
+
+            return AutomaticRepricingExecutionResult.Failed(
+                "Amazon price submission outcome is uncertain. " +
+                "The repricing event remains Applying to prevent " +
+                "duplicate submission.");
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogError(
+                exception,
+                "Amazon price submission outcome is uncertain for SKU {Sku}. " +
+                "Repricing event {RepricingEventId} remains Applying.",
+                product.Sku,
+                repricingEvent.Id);
+
+            return AutomaticRepricingExecutionResult.Failed(
+                "Amazon price submission outcome is uncertain. " +
+                "The repricing event remains Applying to prevent " +
+                "duplicate submission.");
+        }
         catch (Exception exception)
         {
             repricingEvent.MarkFailed(

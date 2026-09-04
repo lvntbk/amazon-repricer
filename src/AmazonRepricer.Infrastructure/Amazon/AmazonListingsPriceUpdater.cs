@@ -114,29 +114,44 @@ public sealed class AmazonListingsPriceUpdater
                 $"{(int)response.StatusCode}. Response: {error}");
         }
 
-        var result =
-            await response.Content.ReadFromJsonAsync<
-                ListingsItemSubmissionResponse>(
-                cancellationToken: cancellationToken)
-            ?? throw new InvalidOperationException(
-                "Amazon listing update returned an empty response.");
+        try
+        {
+            var result =
+                await response.Content.ReadFromJsonAsync<
+                    ListingsItemSubmissionResponse>(
+                    cancellationToken: cancellationToken)
+                ?? throw new InvalidOperationException(
+                    "Amazon listing update returned an empty response.");
 
-        var issues = result.Issues
-            .Select(x =>
-                $"{x.Severity}: {x.Code} - {x.Message}")
-            .ToArray();
+            var issues = result.Issues
+                .Select(x =>
+                    $"{x.Severity}: {x.Code} - {x.Message}")
+                .ToArray();
 
-        var accepted = string.Equals(
-            result.Status,
-            "ACCEPTED",
-            StringComparison.OrdinalIgnoreCase);
+            var accepted = string.Equals(
+                result.Status,
+                "ACCEPTED",
+                StringComparison.OrdinalIgnoreCase);
 
-        return new AmazonPriceUpdateResult(
-            accepted,
-            string.IsNullOrWhiteSpace(result.SubmissionId)
-                ? null
-                : result.SubmissionId,
-            issues);
+            return new AmazonPriceUpdateResult(
+                accepted,
+                string.IsNullOrWhiteSpace(result.SubmissionId)
+                    ? null
+                    : result.SubmissionId,
+                issues);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw new HttpRequestException(
+                "Amazon listing price update response could not be " +
+                "processed; outcome is uncertain.",
+                exception);
+        }
     }
 
     private static void Validate(

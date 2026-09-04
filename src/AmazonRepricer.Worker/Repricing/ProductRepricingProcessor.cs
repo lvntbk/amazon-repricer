@@ -65,9 +65,11 @@ public sealed class ProductRepricingProcessor
             return;
         }
 
-        var pricingInfo = await GetPricingWithRetryAsync(
-            product,
-            cancellationToken);
+        var pricingInfo =
+            await _amazonPricingProvider.GetPricingAsync(
+                product.Asin,
+                product.Sku,
+                cancellationToken);
 
         var currentPrice = product.CurrentPrice.Value;
 
@@ -177,46 +179,4 @@ public sealed class ProductRepricingProcessor
             executionResult.Reason);
     }
 
-    private async Task<AmazonPricingInfo> GetPricingWithRetryAsync(
-        Product product,
-        CancellationToken cancellationToken)
-    {
-        var maxAttempts = Math.Max(1, _options.MaxRetryAttempts);
-        var baseDelaySeconds = Math.Max(1, _options.RetryDelaySeconds);
-
-        for (var attempt = 1; attempt <= maxAttempts; attempt++)
-        {
-            try
-            {
-                return await _amazonPricingProvider.GetPricingAsync(
-                    product.Asin,
-                    product.Sku,
-                    cancellationToken);
-            }
-            catch (OperationCanceledException)
-                when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception exception)
-                when (attempt < maxAttempts)
-            {
-                var delay = TimeSpan.FromSeconds(
-                    baseDelaySeconds * Math.Pow(2, attempt - 1));
-
-                _logger.LogWarning(
-                    exception,
-                    "Amazon pricing request failed for SKU {Sku}. Attempt {Attempt}/{MaxAttempts}. Retrying in {DelaySeconds} seconds.",
-                    product.Sku,
-                    attempt,
-                    maxAttempts,
-                    delay.TotalSeconds);
-
-                await Task.Delay(delay, cancellationToken);
-            }
-        }
-
-        throw new InvalidOperationException(
-            $"Amazon pricing request failed after {maxAttempts} attempts for SKU {product.Sku}.");
-    }
 }

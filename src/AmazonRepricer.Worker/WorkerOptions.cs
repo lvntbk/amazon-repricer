@@ -8,10 +8,6 @@ public sealed class WorkerOptions
 
     public int IntervalSeconds { get; set; } = 30;
 
-    public int MaxRetryAttempts { get; set; } = 3;
-
-    public int RetryDelaySeconds { get; set; } = 2;
-
     public RepricingExecutionMode ExecutionMode { get; set; }
         = RepricingExecutionMode.DryRun;
 
