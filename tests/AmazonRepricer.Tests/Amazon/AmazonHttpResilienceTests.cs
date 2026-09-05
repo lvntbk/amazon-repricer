@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using AmazonRepricer.Application.Amazon;
+using AmazonRepricer.Application.Pricing;
 using AmazonRepricer.Infrastructure;
 using AmazonRepricer.Infrastructure.Amazon;
 using AmazonRepricer.Infrastructure.Amazon.Sellers;
@@ -303,9 +304,13 @@ public sealed class AmazonHttpResilienceTests
         services.AddInfrastructure(configuration);
 
         services.RemoveAll<ILwaAccessTokenProvider>();
+        services.RemoveAll<IPriceUpdateSafetyGate>();
 
         services.AddSingleton<ILwaAccessTokenProvider>(
             new FakeAccessTokenProvider());
+
+        services.AddSingleton<IPriceUpdateSafetyGate>(
+            new AllowPriceUpdateSafetyGate());
 
         return services;
     }
@@ -343,6 +348,19 @@ public sealed class AmazonHttpResilienceTests
                 Encoding.UTF8,
                 "application/json")
         };
+    }
+
+    private sealed class AllowPriceUpdateSafetyGate
+        : IPriceUpdateSafetyGate
+    {
+        public Task<PriceUpdateSafetyGateResult> EvaluateAsync(
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(
+                new PriceUpdateSafetyGateResult(
+                    true,
+                    "Resilience test gate allows updates."));
+        }
     }
 
     private sealed class FakeAccessTokenProvider

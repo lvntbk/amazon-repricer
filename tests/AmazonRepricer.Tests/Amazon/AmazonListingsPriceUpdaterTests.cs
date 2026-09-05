@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using AmazonRepricer.Application.Pricing;
 using AmazonRepricer.Infrastructure.Amazon;
 
 namespace AmazonRepricer.Tests.Amazon;
@@ -129,6 +130,35 @@ public sealed class AmazonListingsPriceUpdaterTests
     }
 
     [Fact]
+    public async Task UpdatePriceAsync_GlobalSafetyGateBlocked_DoesNotSendHttpRequest()
+    {
+        var handler = new FakeHttpMessageHandler(
+            HttpStatusCode.Accepted,
+            """
+            {
+              "sku": "TEST-SKU-001",
+              "status": "ACCEPTED",
+              "submissionId": "should-not-be-submitted",
+              "issues": []
+            }
+            """);
+
+        var updater = CreateUpdater(
+            handler,
+            new StaticPriceUpdateSafetyGate(isAllowed: false));
+
+        await updater.UpdatePriceAsync(
+            "LOCAL-SELLER-001",
+            "TEST-SKU-001",
+            "A33AVAJ2PDY3EV",
+            "PRODUCT",
+            100m,
+            "TRY");
+
+        Assert.Equal(0, handler.RequestCount);
+    }
+
+    [Fact]
     public async Task UpdatePriceAsync_ShouldRejectNonPositivePrice()
     {
         var handler = new FakeHttpMessageHandler(
@@ -150,7 +180,8 @@ public sealed class AmazonListingsPriceUpdaterTests
     }
 
     private static AmazonListingsPriceUpdater CreateUpdater(
-        HttpMessageHandler handler)
+        HttpMessageHandler handler,
+        IPriceUpdateSafetyGate? safetyGate = null)
     {
         var httpClient = new HttpClient(handler)
         {
@@ -159,7 +190,31 @@ public sealed class AmazonListingsPriceUpdaterTests
 
         return new AmazonListingsPriceUpdater(
             httpClient,
-            new FakeAccessTokenProvider());
+            new FakeAccessTokenProvider(),
+            safetyGate
+                ?? new StaticPriceUpdateSafetyGate(isAllowed: true));
+    }
+
+    private sealed class StaticPriceUpdateSafetyGate
+        : IPriceUpdateSafetyGate
+    {
+        private readonly bool _isAllowed;
+
+        public StaticPriceUpdateSafetyGate(bool isAllowed)
+        {
+            _isAllowed = isAllowed;
+        }
+
+        public Task<PriceUpdateSafetyGateResult> EvaluateAsync(
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(
+                new PriceUpdateSafetyGateResult(
+                    _isAllowed,
+                    _isAllowed
+                        ? "Test gate allows updates."
+                        : "Test gate blocks updates."));
+        }
     }
 
     private sealed class FakeAccessTokenProvider

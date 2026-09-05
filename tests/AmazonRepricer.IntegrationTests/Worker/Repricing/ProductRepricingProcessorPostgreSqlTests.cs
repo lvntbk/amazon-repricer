@@ -2,6 +2,7 @@ using AmazonRepricer.Application.Amazon;
 using AmazonRepricer.Application.Pricing;
 using AmazonRepricer.Domain.Entities;
 using AmazonRepricer.Domain.Enums;
+using AmazonRepricer.Infrastructure.Pricing;
 using AmazonRepricer.IntegrationTests.PostgreSql;
 using AmazonRepricer.Worker;
 using AmazonRepricer.Worker.Repricing;
@@ -72,6 +73,7 @@ public sealed class ProductRepricingProcessorPostgreSqlTests
             var executor = new AutomaticRepricingExecutor(
                 executionContext,
                 priceUpdater,
+                new DbPriceUpdateSafetyGate(executionContext),
                 new AutomaticRepricingGuard(options),
                 NullLogger<AutomaticRepricingExecutor>.Instance,
                 options);
@@ -169,6 +171,15 @@ public sealed class ProductRepricingProcessorPostgreSqlTests
         product.PricingRule = rule;
 
         await using var dbContext = _database.CreateDbContext();
+
+        var safetySettings =
+            await dbContext.RepricingSafetySettings
+                .SingleAsync(
+                    x => x.Id == RepricingSafetySettings.GlobalId);
+
+        safetySettings.PriceUpdatesEnabled = true;
+        safetySettings.UpdatedAtUtc = DateTime.UtcNow;
+
         dbContext.Products.Add(product);
         await dbContext.SaveChangesAsync();
 

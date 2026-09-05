@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using AmazonRepricer.Application.Amazon;
+using AmazonRepricer.Application.Pricing;
 
 namespace AmazonRepricer.Infrastructure.Amazon;
 
@@ -8,13 +9,16 @@ public sealed class AmazonListingsPriceUpdater
 {
     private readonly HttpClient _httpClient;
     private readonly ILwaAccessTokenProvider _accessTokenProvider;
+    private readonly IPriceUpdateSafetyGate _priceUpdateSafetyGate;
 
     public AmazonListingsPriceUpdater(
         HttpClient httpClient,
-        ILwaAccessTokenProvider accessTokenProvider)
+        ILwaAccessTokenProvider accessTokenProvider,
+        IPriceUpdateSafetyGate priceUpdateSafetyGate)
     {
         _httpClient = httpClient;
         _accessTokenProvider = accessTokenProvider;
+        _priceUpdateSafetyGate = priceUpdateSafetyGate;
     }
 
     public async Task<AmazonPriceUpdateResult> UpdatePriceAsync(
@@ -96,6 +100,22 @@ public sealed class AmazonListingsPriceUpdater
             accessToken);
 
         request.Content = JsonContent.Create(body);
+
+        var priceUpdateGateResult =
+            await _priceUpdateSafetyGate.EvaluateAsync(
+                cancellationToken);
+
+        if (!priceUpdateGateResult.IsAllowed)
+        {
+            return new AmazonPriceUpdateResult(
+                false,
+                null,
+                new[]
+                {
+                    "Price update blocked by global safety gate: " +
+                    priceUpdateGateResult.Reason
+                });
+        }
 
         using var response = await _httpClient.SendAsync(
             request,

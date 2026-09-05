@@ -1,7 +1,9 @@
 using AmazonRepricer.Application.Amazon;
+using AmazonRepricer.Application.Pricing;
 using AmazonRepricer.Infrastructure.Amazon;
 using AmazonRepricer.Infrastructure.Amazon.Sellers;
 using AmazonRepricer.Infrastructure.Persistence;
+using AmazonRepricer.Infrastructure.Pricing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,6 +26,10 @@ public static class DependencyInjection
 
         services.AddDbContext<RepricerDbContext>(options =>
             options.UseNpgsql(connectionString));
+
+        services.AddScoped<
+            IPriceUpdateSafetyGate,
+            DbPriceUpdateSafetyGate>();
 
         services.Configure<AmazonSpApiOptions>(
             configuration.GetSection(AmazonSpApiOptions.SectionName));

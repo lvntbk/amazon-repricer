@@ -16,17 +16,20 @@ public sealed class RepricingEventsController : ControllerBase
 {
     private readonly RepricerDbContext _dbContext;
     private readonly IAmazonPriceUpdater _priceUpdater;
+    private readonly IPriceUpdateSafetyGate _priceUpdateSafetyGate;
     private readonly AmazonSpApiOptions _amazonOptions;
     private readonly ILogger<RepricingEventsController> _logger;
 
     public RepricingEventsController(
         RepricerDbContext dbContext,
         IAmazonPriceUpdater priceUpdater,
+        IPriceUpdateSafetyGate priceUpdateSafetyGate,
         IOptions<AmazonSpApiOptions> amazonOptions,
         ILogger<RepricingEventsController> logger)
     {
         _dbContext = dbContext;
         _priceUpdater = priceUpdater;
+        _priceUpdateSafetyGate = priceUpdateSafetyGate;
         _amazonOptions = amazonOptions.Value;
         _logger = logger;
     }
@@ -214,6 +217,26 @@ public sealed class RepricingEventsController : ControllerBase
             {
                 error = "Manual repricing blocked by safety policy.",
                 reason = safetyResult.Reason
+            });
+        }
+
+        var priceUpdateGateResult =
+            await _priceUpdateSafetyGate.EvaluateAsync(
+                cancellationToken);
+
+        if (!priceUpdateGateResult.IsAllowed)
+        {
+            _logger.LogWarning(
+                "Manual repricing blocked by global safety gate " +
+                "for event {RepricingEventId}, SKU {Sku}: {Reason}",
+                repricingEvent.Id,
+                product.Sku,
+                priceUpdateGateResult.Reason);
+
+            return Conflict(new
+            {
+                error = "Price updates are disabled by the global safety gate.",
+                reason = priceUpdateGateResult.Reason
             });
         }
 

@@ -14,6 +14,7 @@ public sealed class AutomaticRepricingExecutor
 {
     private readonly RepricerDbContext _dbContext;
     private readonly IAmazonPriceUpdater _amazonPriceUpdater;
+    private readonly IPriceUpdateSafetyGate _priceUpdateSafetyGate;
     private readonly IAutomaticRepricingGuard _guard;
     private readonly ILogger<AutomaticRepricingExecutor> _logger;
     private readonly WorkerOptions _options;
@@ -21,12 +22,14 @@ public sealed class AutomaticRepricingExecutor
     public AutomaticRepricingExecutor(
         RepricerDbContext dbContext,
         IAmazonPriceUpdater amazonPriceUpdater,
+        IPriceUpdateSafetyGate priceUpdateSafetyGate,
         IAutomaticRepricingGuard guard,
         ILogger<AutomaticRepricingExecutor> logger,
         IOptions<WorkerOptions> options)
     {
         _dbContext = dbContext;
         _amazonPriceUpdater = amazonPriceUpdater;
+        _priceUpdateSafetyGate = priceUpdateSafetyGate;
         _guard = guard;
         _logger = logger;
         _options = options.Value;
@@ -69,6 +72,24 @@ public sealed class AutomaticRepricingExecutor
             return AutomaticRepricingExecutionResult.Skipped(
                 $"Automatic repricing blocked: " +
                 hardSafetyResult.Reason);
+        }
+
+        var priceUpdateGateResult =
+            await _priceUpdateSafetyGate.EvaluateAsync(
+                cancellationToken);
+
+        if (!priceUpdateGateResult.IsAllowed)
+        {
+            _logger.LogWarning(
+                "Automatic repricing blocked by global safety gate " +
+                "for event {RepricingEventId}, SKU {Sku}: {Reason}",
+                repricingEvent.Id,
+                product.Sku,
+                priceUpdateGateResult.Reason);
+
+            return AutomaticRepricingExecutionResult.Skipped(
+                $"Automatic repricing blocked: " +
+                priceUpdateGateResult.Reason);
         }
 
         var lastAppliedEvent = await _dbContext.RepricingEvents

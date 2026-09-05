@@ -2,6 +2,7 @@ using AmazonRepricer.Application.Amazon;
 using AmazonRepricer.Domain.Entities;
 using AmazonRepricer.Domain.Enums;
 using AmazonRepricer.Infrastructure.Persistence;
+using AmazonRepricer.Infrastructure.Pricing;
 using AmazonRepricer.IntegrationTests.PostgreSql;
 using AmazonRepricer.Worker;
 using AmazonRepricer.Worker.Repricing;
@@ -21,6 +22,40 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
         PostgreSqlFixture database)
     {
         _database = database;
+    }
+
+    [Fact]
+    public async Task GlobalPriceUpdatesDisabled_DoesNotCallAmazon()
+    {
+        var scenario = await SeedScenarioAsync(
+            priceUpdatesEnabled: false);
+
+        var updater = new DelegatingAmazonPriceUpdater(
+            () => Task.FromResult(
+                Accepted("should-not-be-submitted")));
+
+        await using var executionContext =
+            _database.CreateDbContext();
+
+        var (product, repricingEvent) =
+            await LoadScenarioAsync(
+                executionContext,
+                scenario);
+
+        var result = await CreateExecutor(
+                executionContext,
+                updater)
+            .ExecuteAsync(
+                product,
+                repricingEvent);
+
+        Assert.False(result.WasAttempted);
+        Assert.False(result.WasApplied);
+        Assert.Equal(0, updater.CallCount);
+        Assert.Equal(
+            RepricingStatus.Pending,
+            repricingEvent.Status);
+        Assert.Equal(100m, product.CurrentPrice);
     }
 
     [Fact]
@@ -467,7 +502,8 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
         Assert.Equal(99m, persistedEvent.AppliedPrice);
     }
 
-    private async Task<ScenarioIds> SeedScenarioAsync()
+    private async Task<ScenarioIds> SeedScenarioAsync(
+        bool priceUpdatesEnabled = true)
     {
         var suffix = Guid.NewGuid().ToString("N");
 
@@ -513,6 +549,18 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
         };
 
         await using var dbContext = _database.CreateDbContext();
+
+        var safetySettings =
+            await dbContext.RepricingSafetySettings
+                .SingleAsync(
+                    x => x.Id == RepricingSafetySettings.GlobalId);
+
+        safetySettings.PriceUpdatesEnabled =
+            priceUpdatesEnabled;
+
+        safetySettings.UpdatedAtUtc =
+            DateTime.UtcNow;
+
         dbContext.Products.Add(product);
         dbContext.Set<PricingRule>().Add(pricingRule);
         dbContext.RepricingEvents.Add(repricingEvent);
@@ -576,6 +624,7 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
         return new AutomaticRepricingExecutor(
             dbContext,
             updater,
+            new DbPriceUpdateSafetyGate(dbContext),
             new AllowAllRepricingGuard(),
             NullLogger<AutomaticRepricingExecutor>.Instance,
             options);

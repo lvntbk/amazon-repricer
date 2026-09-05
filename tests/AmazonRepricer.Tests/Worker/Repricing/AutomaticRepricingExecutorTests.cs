@@ -1,4 +1,5 @@
 using AmazonRepricer.Application.Amazon;
+using AmazonRepricer.Application.Pricing;
 using AmazonRepricer.Domain.Entities;
 using AmazonRepricer.Domain.Enums;
 using AmazonRepricer.Infrastructure.Persistence;
@@ -294,6 +295,7 @@ public sealed class AutomaticRepricingExecutorTests
         return new AutomaticRepricingExecutor(
             dbContext,
             updater,
+            new AllowPriceUpdateSafetyGate(),
             guard,
             NullLogger<AutomaticRepricingExecutor>.Instance,
             options);
@@ -354,6 +356,19 @@ public sealed class AutomaticRepricingExecutorTests
         };
 
         return (product, repricingEvent);
+    }
+
+    private sealed class AllowPriceUpdateSafetyGate
+        : IPriceUpdateSafetyGate
+    {
+        public Task<PriceUpdateSafetyGateResult> EvaluateAsync(
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(
+                new PriceUpdateSafetyGateResult(
+                    true,
+                    "Test safety gate allows price updates."));
+        }
     }
 
     private sealed class FakeAutomaticRepricingGuard

@@ -16,6 +16,9 @@ public sealed class RepricerDbContext : DbContext
     public DbSet<PriceSnapshot> PriceSnapshots => Set<PriceSnapshot>();
     public DbSet<RepricingEvent> RepricingEvents => Set<RepricingEvent>();
 
+    public DbSet<RepricingSafetySettings> RepricingSafetySettings =>
+        Set<RepricingSafetySettings>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(RepricerDbContext).Assembly);

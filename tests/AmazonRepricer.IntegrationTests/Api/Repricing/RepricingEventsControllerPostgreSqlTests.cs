@@ -4,6 +4,7 @@ using AmazonRepricer.Domain.Entities;
 using AmazonRepricer.Domain.Enums;
 using AmazonRepricer.Infrastructure.Amazon;
 using AmazonRepricer.Infrastructure.Persistence;
+using AmazonRepricer.Infrastructure.Pricing;
 using AmazonRepricer.IntegrationTests.PostgreSql;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -123,6 +124,47 @@ public sealed class RepricingEventsControllerPostgreSqlTests
         Assert.Equal(99m, persistedPrice);
     }
 
+    [Fact]
+    public async Task ManualApply_GlobalPriceUpdatesDisabled_DoesNotCallAmazon()
+    {
+        var scenario = await SeedApprovedScenarioAsync(
+            priceUpdatesEnabled: false);
+
+        await using var dbContext = _database.CreateDbContext();
+
+        var safetySettings =
+            await dbContext.RepricingSafetySettings
+                .SingleAsync(
+                    x => x.Id == RepricingSafetySettings.GlobalId);
+
+        Assert.False(safetySettings.PriceUpdatesEnabled);
+
+        var amazonCallStarted =
+            new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var releaseAmazonCall =
+            new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+        releaseAmazonCall.SetResult(true);
+
+        var updater = new BlockingAmazonPriceUpdater(
+            amazonCallStarted,
+            releaseAmazonCall);
+
+        var controller = CreateController(
+            dbContext,
+            updater);
+
+        var result = await controller.Apply(
+            scenario.RepricingEventId,
+            CancellationToken.None);
+
+        Assert.Equal(0, updater.CallCount);
+        Assert.IsType<ConflictObjectResult>(result);
+    }
+
     [Theory]
     [InlineData(50)]
     [InlineData(150)]
@@ -212,7 +254,8 @@ public sealed class RepricingEventsControllerPostgreSqlTests
     }
 
     private async Task<ScenarioIds>
-        SeedApprovedScenarioAsync()
+        SeedApprovedScenarioAsync(
+            bool priceUpdatesEnabled = true)
     {
         var suffix = Guid.NewGuid().ToString("N");
 
@@ -263,6 +306,16 @@ public sealed class RepricingEventsControllerPostgreSqlTests
         await using var dbContext =
             _database.CreateDbContext();
 
+        var safetySettings =
+            await dbContext.RepricingSafetySettings
+                .SingleAsync(
+                    x => x.Id == RepricingSafetySettings.GlobalId);
+
+        safetySettings.PriceUpdatesEnabled =
+            priceUpdatesEnabled;
+
+        safetySettings.UpdatedAtUtc = DateTime.UtcNow;
+
         dbContext.Products.Add(product);
         dbContext.Set<PricingRule>().Add(pricingRule);
         dbContext.RepricingEvents.Add(repricingEvent);
@@ -287,6 +340,7 @@ public sealed class RepricingEventsControllerPostgreSqlTests
         return new RepricingEventsController(
             dbContext,
             updater,
+            new DbPriceUpdateSafetyGate(dbContext),
             options,
             NullLogger<RepricingEventsController>.Instance);
     }
