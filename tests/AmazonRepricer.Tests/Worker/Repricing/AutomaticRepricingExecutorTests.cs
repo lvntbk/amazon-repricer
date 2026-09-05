@@ -100,6 +100,39 @@ public sealed class AutomaticRepricingExecutorTests
             result.Reason);
     }
 
+    [Theory]
+    [InlineData(50)]
+    [InlineData(150)]
+    public async Task ExecuteAsync_PriceOutsidePricingRuleBounds_DoesNotCallAmazon(
+        int proposedPrice)
+    {
+        await using var dbContext = CreateDbContext();
+        var updater = new FakeAmazonPriceUpdater();
+
+        var guard = new FakeAutomaticRepricingGuard(
+            RepricingGuardResult.Allow());
+
+        var executor = CreateExecutor(
+            dbContext,
+            updater,
+            guard,
+            RepricingExecutionMode.Automatic);
+
+        var (product, repricingEvent) = CreateScenario();
+
+        repricingEvent.ProposedPrice = proposedPrice;
+
+        var result = await executor.ExecuteAsync(
+            product,
+            repricingEvent);
+
+        Assert.False(result.WasAttempted);
+        Assert.False(result.WasApplied);
+        Assert.Equal(0, updater.CallCount);
+        Assert.Equal(RepricingStatus.Pending, repricingEvent.Status);
+        Assert.Equal(100m, product.CurrentPrice);
+    }
+
     [Fact]
     public async Task ExecuteAsync_AmazonRejected_MarksFailedAndKeepsPrice()
     {
@@ -298,6 +331,17 @@ public sealed class AutomaticRepricingExecutorTests
             CurrencyCode = "TRY",
             CurrentPrice = 100m,
             IsRepricingEnabled = true
+        };
+
+        product.PricingRule = new PricingRule
+        {
+            ProductId = product.Id,
+            Product = product,
+            Strategy = PricingStrategy.MatchFeaturedOffer,
+            MinimumPrice = 90m,
+            MaximumPrice = 110m,
+            AdjustmentValue = 0m,
+            IsActive = true
         };
 
         var repricingEvent = new RepricingEvent

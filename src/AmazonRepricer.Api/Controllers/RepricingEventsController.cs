@@ -1,5 +1,6 @@
 using AmazonRepricer.Api.Contracts.RepricingEvents;
 using AmazonRepricer.Application.Amazon;
+using AmazonRepricer.Application.Pricing;
 using AmazonRepricer.Domain.Enums;
 using AmazonRepricer.Infrastructure.Amazon;
 using AmazonRepricer.Infrastructure.Persistence;
@@ -145,6 +146,8 @@ public sealed class RepricingEventsController : ControllerBase
             await _dbContext.RepricingEvents
                 .Include(x => x.Product)
                 .ThenInclude(x => x.AmazonStore)
+                .Include(x => x.Product)
+                .ThenInclude(x => x.PricingRule)
                 .FirstOrDefaultAsync(
                     x => x.Id == id,
                     cancellationToken);
@@ -189,6 +192,28 @@ public sealed class RepricingEventsController : ControllerBase
                     "The approved event is based on a stale price.",
                 currentPrice = product.CurrentPrice.Value,
                 eventOldPrice = repricingEvent.OldPrice
+            });
+        }
+
+        var safetyResult =
+            PriceSubmissionSafetyPolicy.EvaluateHardBounds(
+                product.CurrentPrice.Value,
+                repricingEvent.ProposedPrice,
+                product.PricingRule);
+
+        if (!safetyResult.IsAllowed)
+        {
+            _logger.LogWarning(
+                "Manual repricing blocked by safety policy for " +
+                "event {RepricingEventId}, SKU {Sku}: {Reason}",
+                repricingEvent.Id,
+                product.Sku,
+                safetyResult.Reason);
+
+            return Conflict(new
+            {
+                error = "Manual repricing blocked by safety policy.",
+                reason = safetyResult.Reason
             });
         }
 

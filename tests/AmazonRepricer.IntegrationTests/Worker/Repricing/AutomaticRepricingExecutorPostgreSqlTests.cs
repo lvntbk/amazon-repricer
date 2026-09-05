@@ -492,6 +492,17 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
             IsRepricingEnabled = true
         };
 
+        var pricingRule = new PricingRule
+        {
+            ProductId = product.Id,
+            Product = product,
+            Strategy = PricingStrategy.MatchFeaturedOffer,
+            MinimumPrice = 90m,
+            MaximumPrice = 110m,
+            AdjustmentValue = 0m,
+            IsActive = true
+        };
+
         var repricingEvent = new RepricingEvent
         {
             ProductId = product.Id,
@@ -503,6 +514,7 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
 
         await using var dbContext = _database.CreateDbContext();
         dbContext.Products.Add(product);
+        dbContext.Set<PricingRule>().Add(pricingRule);
         dbContext.RepricingEvents.Add(repricingEvent);
         await dbContext.SaveChangesAsync();
 
@@ -516,6 +528,7 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
     {
         var product = await dbContext.Products
             .Include(x => x.AmazonStore)
+            .Include(x => x.PricingRule)
             .SingleAsync(x => x.Id == scenario.ProductId);
 
         var repricingEvent = await dbContext.RepricingEvents

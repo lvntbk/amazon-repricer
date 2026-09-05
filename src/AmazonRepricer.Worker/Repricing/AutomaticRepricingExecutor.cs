@@ -1,4 +1,5 @@
 using AmazonRepricer.Application.Amazon;
+using AmazonRepricer.Application.Pricing;
 using AmazonRepricer.Domain.Entities;
 using AmazonRepricer.Domain.Enums;
 using AmazonRepricer.Infrastructure.Persistence;
@@ -47,6 +48,27 @@ public sealed class AutomaticRepricingExecutor
         {
             return AutomaticRepricingExecutionResult.Skipped(
                 "Amazon listing metadata is incomplete.");
+        }
+
+        var hardSafetyResult =
+            PriceSubmissionSafetyPolicy.EvaluateHardBounds(
+                product.CurrentPrice
+                    ?? repricingEvent.OldPrice,
+                repricingEvent.ProposedPrice,
+                product.PricingRule);
+
+        if (!hardSafetyResult.IsAllowed)
+        {
+            _logger.LogWarning(
+                "Automatic repricing blocked by hard safety policy " +
+                "for event {RepricingEventId}, SKU {Sku}: {Reason}",
+                repricingEvent.Id,
+                product.Sku,
+                hardSafetyResult.Reason);
+
+            return AutomaticRepricingExecutionResult.Skipped(
+                $"Automatic repricing blocked: " +
+                hardSafetyResult.Reason);
         }
 
         var lastAppliedEvent = await _dbContext.RepricingEvents
