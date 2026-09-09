@@ -12,9 +12,17 @@ public sealed class RepricingSafetySettingsConfiguration
     {
         builder.ToTable(
             "repricing_safety_settings",
-            tableBuilder => tableBuilder.HasCheckConstraint(
-                "CK_repricing_safety_settings_singleton",
-                "\"Id\" = 1"));
+            tableBuilder =>
+            {
+                tableBuilder.HasCheckConstraint(
+                    "CK_repricing_safety_settings_singleton",
+                    "\"Id\" = 1");
+
+                tableBuilder.HasCheckConstraint(
+                    "CK_repricing_safety_settings_max_price_change",
+                    "\"MaxPriceChangePercentage\" > 0 AND " +
+                    "\"MaxPriceChangePercentage\" <= 100");
+            });
 
         builder.HasKey(x => x.Id);
 
@@ -22,6 +30,11 @@ public sealed class RepricingSafetySettingsConfiguration
             .ValueGeneratedNever();
 
         builder.Property(x => x.PriceUpdatesEnabled)
+            .IsRequired();
+
+        builder.Property(x => x.MaxPriceChangePercentage)
+            .HasPrecision(5, 2)
+            .HasDefaultValue(10m)
             .IsRequired();
 
         builder.Property(x => x.UpdatedAtUtc)

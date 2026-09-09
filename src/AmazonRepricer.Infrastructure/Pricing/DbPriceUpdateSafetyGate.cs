@@ -40,8 +40,17 @@ public sealed class DbPriceUpdateSafetyGate
                 "Global price updates are disabled.");
         }
 
+        if (settings.MaxPriceChangePercentage <= 0 ||
+            settings.MaxPriceChangePercentage > 100)
+        {
+            return new PriceUpdateSafetyGateResult(
+                false,
+                "Global maximum price change percentage is invalid.");
+        }
+
         return new PriceUpdateSafetyGateResult(
             true,
-            "Global price updates are enabled.");
+            "Global price updates are enabled.",
+            settings.MaxPriceChangePercentage);
     }
 }

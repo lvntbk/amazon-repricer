@@ -54,6 +54,7 @@ public sealed class ProductRepricingProcessor
 
         if (!product.IsRepricingEnabled ||
             !product.AmazonStore.IsActive ||
+            !product.AmazonStore.AutomaticRepricingEnabled ||
             product.PricingRule is null ||
             !product.PricingRule.IsActive ||
             product.CurrentPrice is null)

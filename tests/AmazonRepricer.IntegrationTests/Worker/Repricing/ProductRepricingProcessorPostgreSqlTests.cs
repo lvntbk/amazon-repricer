@@ -66,8 +66,7 @@ public sealed class ProductRepricingProcessorPostgreSqlTests
             var options = Options.Create(new WorkerOptions
             {
                 ExecutionMode = RepricingExecutionMode.Automatic,
-                MaxPriceChangePercentage = 10m,
-                MinimumRepricingIntervalSeconds = 0
+                    MinimumRepricingIntervalSeconds = 0
             });
 
             var executor = new AutomaticRepricingExecutor(
@@ -130,7 +129,73 @@ public sealed class ProductRepricingProcessorPostgreSqlTests
         Assert.Equal(98.90m, product.CurrentPrice);
     }
 
-    private async Task<Scenario> SeedScenarioAsync()
+    [Fact]
+    public async Task StoreAutomaticRepricingDisabled_DoesNotRequestPricingOrSubmit()
+    {
+        var scenario = await SeedScenarioAsync(
+            automaticRepricingEnabled: false);
+
+        var pricingProvider = new StubAmazonPricingProvider(
+            new AmazonPricingInfo(
+                FeaturedOfferPrice: 99.90m,
+                IsFeaturedOfferOurs: false));
+
+        var priceUpdater = new RecordingAmazonPriceUpdater(
+            () => Task.FromResult(
+                new AmazonPriceUpdateResult(
+                    true,
+                    "should-not-be-submitted",
+                    Array.Empty<string>())));
+
+        await using (var executionContext =
+            _database.CreateDbContext())
+        {
+            var options = Options.Create(new WorkerOptions
+            {
+                ExecutionMode = RepricingExecutionMode.Automatic,
+                    MinimumRepricingIntervalSeconds = 0
+            });
+
+            var executor = new AutomaticRepricingExecutor(
+                executionContext,
+                priceUpdater,
+                new DbPriceUpdateSafetyGate(executionContext),
+                new AutomaticRepricingGuard(options),
+                NullLogger<AutomaticRepricingExecutor>.Instance,
+                options);
+
+            var processor = new ProductRepricingProcessor(
+                executionContext,
+                new PricingEngine(),
+                pricingProvider,
+                executor,
+                NullLogger<ProductRepricingProcessor>.Instance,
+                options);
+
+            await processor.ProcessAsync(scenario.ProductId);
+        }
+
+        await using var verificationContext =
+            _database.CreateDbContext();
+
+        var snapshotCount =
+            await verificationContext.PriceSnapshots
+                .CountAsync(x =>
+                    x.ProductId == scenario.ProductId);
+
+        var eventCount =
+            await verificationContext.RepricingEvents
+                .CountAsync(x =>
+                    x.ProductId == scenario.ProductId);
+
+        Assert.Equal(0, pricingProvider.CallCount);
+        Assert.Equal(0, priceUpdater.CallCount);
+        Assert.Equal(0, snapshotCount);
+        Assert.Equal(0, eventCount);
+    }
+
+    private async Task<Scenario> SeedScenarioAsync(
+        bool automaticRepricingEnabled = true)
     {
         var suffix = Guid.NewGuid().ToString("N");
 
@@ -139,7 +204,9 @@ public sealed class ProductRepricingProcessorPostgreSqlTests
             Name = $"E2E Store {suffix}",
             SellerId = $"SELLER-E2E-{suffix}",
             MarketplaceId = "A33AVAJ2PDY3EV",
-            IsActive = true
+            IsActive = true,
+            AutomaticRepricingEnabled =
+                automaticRepricingEnabled
         };
 
         var product = new Product

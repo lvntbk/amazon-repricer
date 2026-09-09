@@ -288,8 +288,7 @@ public sealed class AutomaticRepricingExecutorTests
             new WorkerOptions
             {
                 ExecutionMode = executionMode,
-                MaxPriceChangePercentage = 10m,
-                MinimumRepricingIntervalSeconds = 300
+                    MinimumRepricingIntervalSeconds = 300
             });
 
         return new AutomaticRepricingExecutor(
@@ -319,7 +318,8 @@ public sealed class AutomaticRepricingExecutorTests
             Name = "Test Store",
             SellerId = "TEST-SELLER",
             MarketplaceId = "TEST-MARKETPLACE",
-            IsActive = true
+            IsActive = true,
+            AutomaticRepricingEnabled = true
         };
 
         var product = new Product
@@ -367,7 +367,8 @@ public sealed class AutomaticRepricingExecutorTests
             return Task.FromResult(
                 new PriceUpdateSafetyGateResult(
                     true,
-                    "Test safety gate allows price updates."));
+                    "Test safety gate allows price updates.",
+                    10m));
         }
     }
 

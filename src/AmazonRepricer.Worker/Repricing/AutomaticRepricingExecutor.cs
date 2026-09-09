@@ -46,32 +46,25 @@ public sealed class AutomaticRepricingExecutor
                 $"Execution mode is {_options.ExecutionMode}.");
         }
 
+        if (!product.AmazonStore.AutomaticRepricingEnabled)
+        {
+            _logger.LogWarning(
+                "Automatic repricing blocked because store-level " +
+                "automatic repricing is disabled for store {AmazonStoreId}, " +
+                "event {RepricingEventId}, SKU {Sku}.",
+                product.AmazonStore.Id,
+                repricingEvent.Id,
+                product.Sku);
+
+            return AutomaticRepricingExecutionResult.Skipped(
+                "Automatic repricing is disabled for the Amazon store.");
+        }
+
         if (string.IsNullOrWhiteSpace(product.ProductType) ||
             string.IsNullOrWhiteSpace(product.CurrencyCode))
         {
             return AutomaticRepricingExecutionResult.Skipped(
                 "Amazon listing metadata is incomplete.");
-        }
-
-        var hardSafetyResult =
-            PriceSubmissionSafetyPolicy.EvaluateHardBounds(
-                product.CurrentPrice
-                    ?? repricingEvent.OldPrice,
-                repricingEvent.ProposedPrice,
-                product.PricingRule);
-
-        if (!hardSafetyResult.IsAllowed)
-        {
-            _logger.LogWarning(
-                "Automatic repricing blocked by hard safety policy " +
-                "for event {RepricingEventId}, SKU {Sku}: {Reason}",
-                repricingEvent.Id,
-                product.Sku,
-                hardSafetyResult.Reason);
-
-            return AutomaticRepricingExecutionResult.Skipped(
-                $"Automatic repricing blocked: " +
-                hardSafetyResult.Reason);
         }
 
         var priceUpdateGateResult =
@@ -90,6 +83,28 @@ public sealed class AutomaticRepricingExecutor
             return AutomaticRepricingExecutionResult.Skipped(
                 $"Automatic repricing blocked: " +
                 priceUpdateGateResult.Reason);
+        }
+
+        var safetyResult =
+            PriceSubmissionSafetyPolicy.Evaluate(
+                product.CurrentPrice
+                    ?? repricingEvent.OldPrice,
+                repricingEvent.ProposedPrice,
+                product.PricingRule,
+                priceUpdateGateResult.MaxPriceChangePercentage);
+
+        if (!safetyResult.IsAllowed)
+        {
+            _logger.LogWarning(
+                "Automatic repricing blocked by safety policy " +
+                "for event {RepricingEventId}, SKU {Sku}: {Reason}",
+                repricingEvent.Id,
+                product.Sku,
+                safetyResult.Reason);
+
+            return AutomaticRepricingExecutionResult.Skipped(
+                $"Automatic repricing blocked: " +
+                safetyResult.Reason);
         }
 
         var lastAppliedEvent = await _dbContext.RepricingEvents
@@ -135,7 +150,9 @@ public sealed class AutomaticRepricingExecutor
             var claimedRowCount = await _dbContext.RepricingEvents
                 .Where(x =>
                     x.Id == repricingEvent.Id &&
-                    x.Status == RepricingStatus.Pending)
+                    x.Status == RepricingStatus.Pending &&
+                    x.Product.AmazonStore.IsActive &&
+                    x.Product.AmazonStore.AutomaticRepricingEnabled)
                 .ExecuteUpdateAsync(
                     setters => setters
                         .SetProperty(

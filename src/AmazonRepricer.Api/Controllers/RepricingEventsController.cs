@@ -198,28 +198,6 @@ public sealed class RepricingEventsController : ControllerBase
             });
         }
 
-        var safetyResult =
-            PriceSubmissionSafetyPolicy.EvaluateHardBounds(
-                product.CurrentPrice.Value,
-                repricingEvent.ProposedPrice,
-                product.PricingRule);
-
-        if (!safetyResult.IsAllowed)
-        {
-            _logger.LogWarning(
-                "Manual repricing blocked by safety policy for " +
-                "event {RepricingEventId}, SKU {Sku}: {Reason}",
-                repricingEvent.Id,
-                product.Sku,
-                safetyResult.Reason);
-
-            return Conflict(new
-            {
-                error = "Manual repricing blocked by safety policy.",
-                reason = safetyResult.Reason
-            });
-        }
-
         var priceUpdateGateResult =
             await _priceUpdateSafetyGate.EvaluateAsync(
                 cancellationToken);
@@ -237,6 +215,29 @@ public sealed class RepricingEventsController : ControllerBase
             {
                 error = "Price updates are disabled by the global safety gate.",
                 reason = priceUpdateGateResult.Reason
+            });
+        }
+
+        var safetyResult =
+            PriceSubmissionSafetyPolicy.Evaluate(
+                product.CurrentPrice.Value,
+                repricingEvent.ProposedPrice,
+                product.PricingRule,
+                priceUpdateGateResult.MaxPriceChangePercentage);
+
+        if (!safetyResult.IsAllowed)
+        {
+            _logger.LogWarning(
+                "Manual repricing blocked by safety policy for " +
+                "event {RepricingEventId}, SKU {Sku}: {Reason}",
+                repricingEvent.Id,
+                product.Sku,
+                safetyResult.Reason);
+
+            return Conflict(new
+            {
+                error = "Manual repricing blocked by safety policy.",
+                reason = safetyResult.Reason
             });
         }
 

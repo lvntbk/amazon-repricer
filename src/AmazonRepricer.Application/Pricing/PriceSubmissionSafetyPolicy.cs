@@ -8,6 +8,47 @@ public sealed record PriceSubmissionSafetyResult(
 
 public static class PriceSubmissionSafetyPolicy
 {
+    public static PriceSubmissionSafetyResult Evaluate(
+        decimal currentPrice,
+        decimal proposedPrice,
+        PricingRule? pricingRule,
+        decimal maxPriceChangePercentage)
+    {
+        var hardBoundsResult = EvaluateHardBounds(
+            currentPrice,
+            proposedPrice,
+            pricingRule);
+
+        if (!hardBoundsResult.IsAllowed)
+        {
+            return hardBoundsResult;
+        }
+
+        if (maxPriceChangePercentage <= 0 ||
+            maxPriceChangePercentage > 100)
+        {
+            return Reject(
+                "Maximum price change percentage must be " +
+                "greater than zero and at most 100.");
+        }
+
+        var percentageChange =
+            Math.Abs(proposedPrice - currentPrice) /
+            currentPrice *
+            100m;
+
+        if (percentageChange > maxPriceChangePercentage)
+        {
+            return Reject(
+                $"Price change {percentageChange:F2}% exceeds the " +
+                $"maximum of {maxPriceChangePercentage:F2}%.");
+        }
+
+        return new PriceSubmissionSafetyResult(
+            true,
+            "Price submission safety checks passed.");
+    }
+
     public static PriceSubmissionSafetyResult EvaluateHardBounds(
         decimal currentPrice,
         decimal proposedPrice,

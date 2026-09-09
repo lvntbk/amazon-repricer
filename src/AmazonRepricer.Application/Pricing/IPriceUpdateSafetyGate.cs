@@ -2,7 +2,8 @@ namespace AmazonRepricer.Application.Pricing;
 
 public sealed record PriceUpdateSafetyGateResult(
     bool IsAllowed,
-    string Reason);
+    string Reason,
+    decimal MaxPriceChangePercentage = 0m);
 
 public interface IPriceUpdateSafetyGate
 {

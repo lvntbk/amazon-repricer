@@ -8,5 +8,7 @@ public sealed class RepricingSafetySettings
 
     public bool PriceUpdatesEnabled { get; set; }
 
+    public decimal MaxPriceChangePercentage { get; set; } = 10m;
+
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 }

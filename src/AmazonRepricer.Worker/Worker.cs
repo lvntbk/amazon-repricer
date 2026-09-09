@@ -26,13 +26,6 @@ public sealed class Worker : BackgroundService
                 "Worker interval must be greater than zero.");
         }
 
-        if (_options.MaxPriceChangePercentage <= 0 ||
-            _options.MaxPriceChangePercentage > 100)
-        {
-            throw new InvalidOperationException(
-                "Maximum price change percentage must be between 0 and 100.");
-        }
-
         if (_options.MinimumRepricingIntervalSeconds < 0)
         {
             throw new InvalidOperationException(
@@ -91,11 +84,7 @@ public sealed class Worker : BackgroundService
 
             productIds = await dbContext.Products
                 .AsNoTracking()
-                .Where(x =>
-                    x.IsRepricingEnabled &&
-                    x.PricingRule != null &&
-                    x.PricingRule.IsActive &&
-                    x.AmazonStore.IsActive)
+                .EligibleForAutomaticRepricing()
                 .Select(x => x.Id)
                 .ToListAsync(cancellationToken);
         }

@@ -59,6 +59,129 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
     }
 
     [Fact]
+    public async Task PriceChangeAboveGlobalMaximum_DoesNotCallAmazon()
+    {
+        var scenario = await SeedScenarioAsync(
+            maxPriceChangePercentage: 5m,
+            proposedPrice: 108m);
+
+        var updater = new DelegatingAmazonPriceUpdater(
+            () => Task.FromResult(
+                Accepted("should-not-be-submitted")));
+
+        await using var executionContext =
+            _database.CreateDbContext();
+
+        var (product, repricingEvent) =
+            await LoadScenarioAsync(
+                executionContext,
+                scenario);
+
+        var result = await CreateExecutor(
+                executionContext,
+                updater)
+            .ExecuteAsync(
+                product,
+                repricingEvent);
+
+        Assert.False(result.WasAttempted);
+        Assert.False(result.WasApplied);
+        Assert.Equal(0, updater.CallCount);
+        Assert.Equal(
+            RepricingStatus.Pending,
+            repricingEvent.Status);
+        Assert.Equal(100m, product.CurrentPrice);
+    }
+
+    [Fact]
+    public async Task StoreAutomaticRepricingDisabledAfterLoad_DoesNotCallAmazon()
+    {
+        var scenario = await SeedScenarioAsync(
+            automaticRepricingEnabled: true);
+
+        var updater = new DelegatingAmazonPriceUpdater(
+            () => Task.FromResult(
+                Accepted("should-not-be-submitted")));
+
+        await using var executionContext =
+            _database.CreateDbContext();
+
+        var (product, repricingEvent) =
+            await LoadScenarioAsync(
+                executionContext,
+                scenario);
+
+        Assert.True(
+            product.AmazonStore.AutomaticRepricingEnabled);
+
+        await using (var toggleContext =
+            _database.CreateDbContext())
+        {
+            var store =
+                await toggleContext.AmazonStores
+                    .SingleAsync(x =>
+                        x.Id == product.AmazonStoreId);
+
+            store.AutomaticRepricingEnabled = false;
+
+            await toggleContext.SaveChangesAsync();
+        }
+
+        // The already-loaded entity is intentionally stale here.
+        Assert.True(
+            product.AmazonStore.AutomaticRepricingEnabled);
+
+        var result = await CreateExecutor(
+                executionContext,
+                updater)
+            .ExecuteAsync(
+                product,
+                repricingEvent);
+
+        Assert.False(result.WasAttempted);
+        Assert.False(result.WasApplied);
+        Assert.Equal(0, updater.CallCount);
+        Assert.Equal(
+            RepricingStatus.Pending,
+            repricingEvent.Status);
+        Assert.Equal(100m, product.CurrentPrice);
+    }
+
+    [Fact]
+    public async Task StoreAutomaticRepricingDisabled_DoesNotCallAmazon()
+    {
+        var scenario = await SeedScenarioAsync(
+            automaticRepricingEnabled: false);
+
+        var updater = new DelegatingAmazonPriceUpdater(
+            () => Task.FromResult(
+                Accepted("should-not-be-submitted")));
+
+        await using var executionContext =
+            _database.CreateDbContext();
+
+        var (product, repricingEvent) =
+            await LoadScenarioAsync(
+                executionContext,
+                scenario);
+
+        var result = await CreateExecutor(
+                executionContext,
+                updater)
+            .ExecuteAsync(
+                product,
+                repricingEvent);
+
+        Assert.False(result.WasAttempted);
+        Assert.False(result.WasApplied);
+        Assert.Equal(0, updater.CallCount);
+        Assert.Equal(
+            RepricingStatus.Pending,
+            repricingEvent.Status);
+        Assert.Equal(100m, product.CurrentPrice);
+    }
+
+    [Fact]
     public async Task AcceptedUpdate_PersistsApplicationClaimBeforeAmazonCall_ThenAppliesPrice()
     {
         var scenario = await SeedScenarioAsync();
@@ -503,7 +626,10 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
     }
 
     private async Task<ScenarioIds> SeedScenarioAsync(
-        bool priceUpdatesEnabled = true)
+        bool priceUpdatesEnabled = true,
+        bool automaticRepricingEnabled = true,
+        decimal maxPriceChangePercentage = 10m,
+        decimal proposedPrice = 99m)
     {
         var suffix = Guid.NewGuid().ToString("N");
 
@@ -512,7 +638,9 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
             Name = $"Integration Store {suffix}",
             SellerId = $"SELLER-{suffix}",
             MarketplaceId = "A33AVAJ2PDY3EV",
-            IsActive = true
+            IsActive = true,
+            AutomaticRepricingEnabled =
+                automaticRepricingEnabled
         };
 
         var product = new Product
@@ -544,7 +672,7 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
             ProductId = product.Id,
             Product = product,
             OldPrice = 100m,
-            ProposedPrice = 99m,
+            ProposedPrice = proposedPrice,
             Reason = "PostgreSQL integration test decision."
         };
 
@@ -557,6 +685,9 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
 
         safetySettings.PriceUpdatesEnabled =
             priceUpdatesEnabled;
+
+        safetySettings.MaxPriceChangePercentage =
+            maxPriceChangePercentage;
 
         safetySettings.UpdatedAtUtc =
             DateTime.UtcNow;
@@ -617,7 +748,6 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
         var options = Options.Create(new WorkerOptions
         {
             ExecutionMode = RepricingExecutionMode.Automatic,
-            MaxPriceChangePercentage = 10m,
             MinimumRepricingIntervalSeconds = 0
         });
 

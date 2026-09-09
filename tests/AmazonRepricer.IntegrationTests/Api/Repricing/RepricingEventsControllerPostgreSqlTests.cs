@@ -125,6 +125,66 @@ public sealed class RepricingEventsControllerPostgreSqlTests
     }
 
     [Fact]
+    public async Task ManualApply_StoreAutomaticRepricingDisabled_StillCallsAmazon()
+    {
+        var scenario = await SeedApprovedScenarioAsync(
+            priceUpdatesEnabled: true,
+            automaticRepricingEnabled: false);
+
+        await using var dbContext =
+            _database.CreateDbContext();
+
+        var amazonCallStarted =
+            new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var releaseAmazonCall =
+            new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+        releaseAmazonCall.SetResult(true);
+
+        var updater = new BlockingAmazonPriceUpdater(
+            amazonCallStarted,
+            releaseAmazonCall);
+
+        var controller = CreateController(
+            dbContext,
+            updater);
+
+        var result = await controller.Apply(
+            scenario.RepricingEventId,
+            CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(1, updater.CallCount);
+
+        await using var verificationContext =
+            _database.CreateDbContext();
+
+        var persistedEvent =
+            await verificationContext.RepricingEvents
+                .AsNoTracking()
+                .SingleAsync(x =>
+                    x.Id == scenario.RepricingEventId);
+
+        var persistedPrice =
+            await verificationContext.Products
+                .AsNoTracking()
+                .Where(x =>
+                    x.Id == scenario.ProductId)
+                .Select(x => x.CurrentPrice)
+                .SingleAsync();
+
+        Assert.Equal(
+            RepricingStatus.Applied,
+            persistedEvent.Status);
+
+        Assert.True(persistedEvent.WasApplied);
+        Assert.Equal(99m, persistedPrice);
+    }
+
+    [Fact]
     public async Task ManualApply_GlobalPriceUpdatesDisabled_DoesNotCallAmazon()
     {
         var scenario = await SeedApprovedScenarioAsync(
@@ -159,6 +219,105 @@ public sealed class RepricingEventsControllerPostgreSqlTests
 
         var result = await controller.Apply(
             scenario.RepricingEventId,
+            CancellationToken.None);
+
+        Assert.Equal(0, updater.CallCount);
+        Assert.IsType<ConflictObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task ManualApply_PriceChangeAboveGlobalMaximum_DoesNotCallAmazon()
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+
+        var store = new AmazonStore
+        {
+            Name = $"Percentage Safety Store {suffix}",
+            SellerId = $"SELLER-PERCENT-{suffix}",
+            MarketplaceId = "A33AVAJ2PDY3EV",
+            IsActive = true,
+            AutomaticRepricingEnabled = false
+        };
+
+        var product = new Product
+        {
+            AmazonStoreId = store.Id,
+            AmazonStore = store,
+            Sku = $"PERCENT-{suffix}",
+            Asin = "B0PERCENTSAFE",
+            Title = "Manual percentage safety integration product",
+            ProductType = "PRODUCT",
+            CurrencyCode = "TRY",
+            CurrentPrice = 100m,
+            IsRepricingEnabled = true
+        };
+
+        var pricingRule = new PricingRule
+        {
+            ProductId = product.Id,
+            Product = product,
+            Strategy = PricingStrategy.MatchFeaturedOffer,
+            MinimumPrice = 1m,
+            MaximumPrice = 1000m,
+            AdjustmentValue = 0m,
+            IsActive = true
+        };
+
+        var repricingEvent = new RepricingEvent
+        {
+            ProductId = product.Id,
+            Product = product,
+            OldPrice = 100m,
+            ProposedPrice = 111m,
+            Reason = "Manual maximum percentage safety test."
+        };
+
+        repricingEvent.Approve(
+            "Approved to verify shared percentage safety.");
+
+        await using (var seedContext =
+            _database.CreateDbContext())
+        {
+            var safetySettings =
+                await seedContext.RepricingSafetySettings
+                    .SingleAsync(
+                        x => x.Id ==
+                            RepricingSafetySettings.GlobalId);
+
+            safetySettings.PriceUpdatesEnabled = true;
+            safetySettings.MaxPriceChangePercentage = 10m;
+            safetySettings.UpdatedAtUtc = DateTime.UtcNow;
+
+            seedContext.Products.Add(product);
+            seedContext.Set<PricingRule>().Add(pricingRule);
+            seedContext.RepricingEvents.Add(repricingEvent);
+
+            await seedContext.SaveChangesAsync();
+        }
+
+        await using var dbContext =
+            _database.CreateDbContext();
+
+        var amazonCallStarted =
+            new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var releaseAmazonCall =
+            new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
+        releaseAmazonCall.SetResult(true);
+
+        var updater = new BlockingAmazonPriceUpdater(
+            amazonCallStarted,
+            releaseAmazonCall);
+
+        var controller = CreateController(
+            dbContext,
+            updater);
+
+        var result = await controller.Apply(
+            repricingEvent.Id,
             CancellationToken.None);
 
         Assert.Equal(0, updater.CallCount);
@@ -255,7 +414,8 @@ public sealed class RepricingEventsControllerPostgreSqlTests
 
     private async Task<ScenarioIds>
         SeedApprovedScenarioAsync(
-            bool priceUpdatesEnabled = true)
+            bool priceUpdatesEnabled = true,
+            bool automaticRepricingEnabled = true)
     {
         var suffix = Guid.NewGuid().ToString("N");
 
@@ -264,7 +424,9 @@ public sealed class RepricingEventsControllerPostgreSqlTests
             Name = $"Manual Apply Store {suffix}",
             SellerId = $"SELLER-{suffix}",
             MarketplaceId = "A33AVAJ2PDY3EV",
-            IsActive = true
+            IsActive = true,
+            AutomaticRepricingEnabled =
+                automaticRepricingEnabled
         };
 
         var product = new Product

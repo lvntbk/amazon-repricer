@@ -11,8 +11,6 @@ public sealed class WorkerOptions
     public RepricingExecutionMode ExecutionMode { get; set; }
         = RepricingExecutionMode.DryRun;
 
-    public decimal MaxPriceChangePercentage { get; set; } = 10m;
-
     public int MinimumRepricingIntervalSeconds { get; set; } = 300;
 
     public int ReconciliationIntervalSeconds { get; set; } = 60;

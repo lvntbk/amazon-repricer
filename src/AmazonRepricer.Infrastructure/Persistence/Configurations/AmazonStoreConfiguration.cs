@@ -24,6 +24,10 @@ public sealed class AmazonStoreConfiguration : IEntityTypeConfiguration<AmazonSt
             .HasMaxLength(100)
             .IsRequired();
 
+        builder.Property(x => x.AutomaticRepricingEnabled)
+            .HasDefaultValue(false)
+            .IsRequired();
+
         builder.HasIndex(x => new { x.SellerId, x.MarketplaceId })
             .IsUnique();
 
