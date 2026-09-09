@@ -1,7 +1,9 @@
+using AmazonRepricer.Application.Auth;
 using AmazonRepricer.Api.Contracts.Repricing;
 using AmazonRepricer.Application.Pricing;
 using AmazonRepricer.Domain.Entities;
 using AmazonRepricer.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -23,6 +25,8 @@ public sealed class RepricingController : ControllerBase
     }
 
     [HttpPost("evaluate")]
+    [Authorize(
+        Policy = AppAuthorizationPolicies.OperatorOrAdmin)]
     public async Task<ActionResult> Evaluate(
         EvaluateRepricingRequest request,
         CancellationToken cancellationToken)

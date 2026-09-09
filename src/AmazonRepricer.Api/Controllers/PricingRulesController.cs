@@ -1,6 +1,8 @@
+using AmazonRepricer.Application.Auth;
 using AmazonRepricer.Api.Contracts.PricingRules;
 using AmazonRepricer.Domain.Entities;
 using AmazonRepricer.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -32,6 +34,8 @@ public sealed class PricingRulesController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(
+        Policy = AppAuthorizationPolicies.OperatorOrAdmin)]
     public async Task<ActionResult> Create(
         CreatePricingRuleRequest request,
         CancellationToken cancellationToken)

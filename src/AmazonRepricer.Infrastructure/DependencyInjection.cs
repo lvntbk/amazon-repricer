@@ -1,9 +1,12 @@
 using AmazonRepricer.Application.Amazon;
+using AmazonRepricer.Application.Auth;
 using AmazonRepricer.Application.Pricing;
 using AmazonRepricer.Infrastructure.Amazon;
 using AmazonRepricer.Infrastructure.Amazon.Sellers;
+using AmazonRepricer.Infrastructure.Identity;
 using AmazonRepricer.Infrastructure.Persistence;
 using AmazonRepricer.Infrastructure.Pricing;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,6 +29,37 @@ public static class DependencyInjection
 
         services.AddDbContext<RepricerDbContext>(options =>
             options.UseNpgsql(connectionString));
+
+        services.AddDbContext<AuthDbContext>(options =>
+            options.UseNpgsql(
+                connectionString,
+                npgsql => npgsql.MigrationsHistoryTable(
+                    "__EFMigrationsHistory_Auth")));
+
+
+        services
+            .AddIdentityCore<AppUser>(options =>
+            {
+                options.User.RequireUniqueEmail = true;
+
+                options.Password.RequiredLength = 12;
+                options.Password.RequiredUniqueChars = 4;
+                options.Password.RequireDigit = false;
+                options.Password.RequireLowercase = false;
+                options.Password.RequireUppercase = false;
+                options.Password.RequireNonAlphanumeric = false;
+
+                options.Lockout.AllowedForNewUsers = true;
+                options.Lockout.MaxFailedAccessAttempts = 4;
+                options.Lockout.DefaultLockoutTimeSpan =
+                    TimeSpan.FromMinutes(10);
+            })
+            .AddRoles<IdentityRole<Guid>>()
+            .AddEntityFrameworkStores<AuthDbContext>();
+
+        services.AddSingleton<
+            IRefreshTokenGenerator,
+            RefreshTokenGenerator>();
 
         services.AddScoped<
             IPriceUpdateSafetyGate,

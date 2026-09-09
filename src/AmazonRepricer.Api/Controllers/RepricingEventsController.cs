@@ -1,9 +1,11 @@
+using AmazonRepricer.Application.Auth;
 using AmazonRepricer.Api.Contracts.RepricingEvents;
 using AmazonRepricer.Application.Amazon;
 using AmazonRepricer.Application.Pricing;
 using AmazonRepricer.Domain.Enums;
 using AmazonRepricer.Infrastructure.Amazon;
 using AmazonRepricer.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -115,6 +117,8 @@ public sealed class RepricingEventsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/approve")]
+    [Authorize(
+        Policy = AppAuthorizationPolicies.OperatorOrAdmin)]
     public async Task<IActionResult> Approve(
         Guid id,
         ReviewRepricingEventRequest request,
@@ -128,6 +132,8 @@ public sealed class RepricingEventsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/reject")]
+    [Authorize(
+        Policy = AppAuthorizationPolicies.OperatorOrAdmin)]
     public async Task<IActionResult> Reject(
         Guid id,
         ReviewRepricingEventRequest request,
@@ -141,6 +147,8 @@ public sealed class RepricingEventsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/apply")]
+    [Authorize(
+        Policy = AppAuthorizationPolicies.OperatorOrAdmin)]
     public async Task<IActionResult> Apply(
         Guid id,
         CancellationToken cancellationToken)

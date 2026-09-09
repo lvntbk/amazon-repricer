@@ -1,12 +1,15 @@
+using AmazonRepricer.Application.Auth;
 using AmazonRepricer.Api.Contracts.Products;
 using AmazonRepricer.Domain.Entities;
 using AmazonRepricer.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace AmazonRepricer.Api.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/products")]
 public sealed class ProductsController : ControllerBase
 {
@@ -68,6 +71,8 @@ public sealed class ProductsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(
+        Policy = AppAuthorizationPolicies.OperatorOrAdmin)]
     public async Task<ActionResult> Create(
         CreateProductRequest request,
         CancellationToken cancellationToken)

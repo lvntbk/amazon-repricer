@@ -1,3 +1,4 @@
+using AmazonRepricer.Infrastructure.Identity;
 using AmazonRepricer.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -15,17 +16,36 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
             .WithPassword("integration_test_password")
             .Build();
 
+    public string ConnectionString =>
+        _container.GetConnectionString();
+
     public async Task InitializeAsync()
     {
         await _container.StartAsync();
 
         await using var dbContext = CreateDbContext();
         await dbContext.Database.MigrateAsync();
+
+        await using var authDbContext = CreateAuthDbContext();
+        await authDbContext.Database.MigrateAsync();
     }
 
     public async Task DisposeAsync()
     {
         await _container.DisposeAsync();
+    }
+
+    public AuthDbContext CreateAuthDbContext()
+    {
+        var options =
+            new DbContextOptionsBuilder<AuthDbContext>()
+                .UseNpgsql(
+                    _container.GetConnectionString(),
+                    npgsql => npgsql.MigrationsHistoryTable(
+                        "__EFMigrationsHistory_Auth"))
+                .Options;
+
+        return new AuthDbContext(options);
     }
 
     public RepricerDbContext CreateDbContext(

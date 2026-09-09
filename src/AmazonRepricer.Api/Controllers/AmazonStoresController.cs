@@ -1,6 +1,8 @@
+using AmazonRepricer.Application.Auth;
 using AmazonRepricer.Api.Contracts.Stores;
 using AmazonRepricer.Domain.Entities;
 using AmazonRepricer.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -44,6 +46,8 @@ public sealed class AmazonStoresController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(
+        Policy = AppAuthorizationPolicies.OperatorOrAdmin)]
     public async Task<ActionResult<AmazonStore>> Create(
         CreateAmazonStoreRequest request,
         CancellationToken cancellationToken)
