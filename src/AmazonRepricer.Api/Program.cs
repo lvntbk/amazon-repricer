@@ -14,47 +14,84 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IPricingEngine, PricingEngine>();
 
+builder.Services
+    .AddOptions<JwtOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            JwtOptions.SectionName))
+    .Validate(
+        options =>
+            !string.IsNullOrWhiteSpace(options.Issuer),
+        "JWT issuer is required.")
+    .Validate(
+        options =>
+            !string.IsNullOrWhiteSpace(options.Audience),
+        "JWT audience is required.")
+    .Validate(
+        options =>
+            !string.IsNullOrWhiteSpace(options.SigningKey),
+        "JWT signing key is required.")
+    .Validate(
+        options =>
+            System.Text.Encoding.UTF8.GetByteCount(
+                options.SigningKey) >= 32,
+        "JWT signing key must be at least 32 bytes for HS256.")
+    .Validate(
+        options =>
+            options.AccessTokenLifetimeMinutes is >= 1 and <= 60,
+        "JWT access token lifetime must be between 1 and 60 minutes.")
+    .Validate(
+        options =>
+            options.RefreshTokenLifetimeDays is >= 1 and <= 90,
+        "JWT refresh token lifetime must be between 1 and 90 days.")
+    .ValidateOnStart();
+
+builder.Services.AddSingleton<
+    IAccessTokenService,
+    AccessTokenService>();
+
 // Add services to the container.
 
 builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        var issuer =
-            builder.Configuration["Jwt:Issuer"]
-            ?? throw new InvalidOperationException(
-                "JWT issuer is required.");
+    .AddAuthentication(
+        JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer();
 
-        var audience =
-            builder.Configuration["Jwt:Audience"]
-            ?? throw new InvalidOperationException(
-                "JWT audience is required.");
+builder.Services
+    .AddOptions<JwtBearerOptions>(
+        JwtBearerDefaults.AuthenticationScheme)
+    .Configure<
+        Microsoft.Extensions.Options.IOptions<JwtOptions>>(
+        (options, jwtOptionsAccessor) =>
+        {
+            var jwtOptions =
+                jwtOptionsAccessor.Value;
 
-        var signingKey =
-            builder.Configuration["Jwt:SigningKey"]
-            ?? throw new InvalidOperationException(
-                "JWT signing key is required.");
-
-        options.TokenValidationParameters =
-            new TokenValidationParameters
-            {
-                ValidateIssuer = true,
-                ValidIssuer = issuer,
-                ValidateAudience = true,
-                ValidAudience = audience,
-                ValidateIssuerSigningKey = true,
-                IssuerSigningKey =
-                    new SymmetricSecurityKey(
-                        Encoding.UTF8.GetBytes(signingKey)),
-                ValidateLifetime = true,
-                ClockSkew = TimeSpan.Zero
-            };
-    });
+            options.TokenValidationParameters =
+                new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidIssuer =
+                        jwtOptions.Issuer,
+                    ValidateAudience = true,
+                    ValidAudience =
+                        jwtOptions.Audience,
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey =
+                        new SymmetricSecurityKey(
+                            Encoding.UTF8.GetBytes(
+                                jwtOptions.SigningKey)),
+                    ValidateLifetime = true,
+                    ClockSkew = TimeSpan.Zero
+                };
+        });
 
 builder.Services.AddSingleton<LoginDummyPasswordHash>();
 builder.Services.AddScoped<
     ILoginTimingProtector,
     LoginTimingProtector>();
+
+builder.Services.AddScoped<AuthBootstrapInitializer>();
 
 builder.Services.AddAuthorization(options =>
 {
@@ -148,6 +185,22 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+
+_ = app.Services
+    .GetRequiredService<
+        Microsoft.Extensions.Options.IOptions<JwtOptions>>()
+    .Value;
+
+await using (var scope =
+    app.Services.CreateAsyncScope())
+{
+    var authBootstrapInitializer =
+        scope.ServiceProvider
+            .GetRequiredService<AuthBootstrapInitializer>();
+
+    await authBootstrapInitializer
+        .InitializeAsync();
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

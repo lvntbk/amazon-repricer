@@ -1,6 +1,3 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 using AmazonRepricer.Api.Auth;
 using AmazonRepricer.Application.Auth;
 using AmazonRepricer.Infrastructure.Identity;
@@ -9,7 +6,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.Options;
 
 namespace AmazonRepricer.Api.Controllers;
 
@@ -17,27 +14,24 @@ namespace AmazonRepricer.Api.Controllers;
 [Route("api/auth")]
 public sealed class AuthController : ControllerBase
 {
-    private static readonly TimeSpan AccessTokenLifetime =
-        TimeSpan.FromMinutes(15);
-
-    private static readonly TimeSpan RefreshTokenLifetime =
-        TimeSpan.FromDays(30);
-
     private readonly UserManager<AppUser> _userManager;
-    private readonly IConfiguration _configuration;
+    private readonly JwtOptions _jwtOptions;
+    private readonly IAccessTokenService _accessTokenService;
     private readonly ILoginTimingProtector _loginTimingProtector;
     private readonly AuthDbContext _authDbContext;
     private readonly IRefreshTokenGenerator _refreshTokenGenerator;
 
     public AuthController(
         UserManager<AppUser> userManager,
-        IConfiguration configuration,
+        IOptions<JwtOptions> jwtOptions,
+        IAccessTokenService accessTokenService,
         ILoginTimingProtector loginTimingProtector,
         AuthDbContext authDbContext,
         IRefreshTokenGenerator refreshTokenGenerator)
     {
         _userManager = userManager;
-        _configuration = configuration;
+        _jwtOptions = jwtOptions.Value;
+        _accessTokenService = accessTokenService;
         _loginTimingProtector = loginTimingProtector;
         _authDbContext = authDbContext;
         _refreshTokenGenerator = refreshTokenGenerator;
@@ -116,13 +110,17 @@ public sealed class AuthController : ControllerBase
             DateTimeOffset.UtcNow;
 
         var expiresAtUtc =
-            now.Add(AccessTokenLifetime);
+            now.Add(
+                TimeSpan.FromMinutes(
+                    _jwtOptions.AccessTokenLifetimeMinutes));
 
         var refreshTokenExpiresAtUtc =
-            now.Add(RefreshTokenLifetime);
+            now.Add(
+                TimeSpan.FromDays(
+                    _jwtOptions.RefreshTokenLifetimeDays));
 
         var accessToken =
-            CreateAccessToken(
+            _accessTokenService.CreateAccessToken(
                 user,
                 roles,
                 now,
@@ -233,7 +231,9 @@ public sealed class AuthController : ControllerBase
             Guid.NewGuid();
 
         var refreshTokenExpiresAtUtc =
-            now.Add(RefreshTokenLifetime);
+            now.Add(
+                TimeSpan.FromDays(
+                    _jwtOptions.RefreshTokenLifetimeDays));
 
         await using var transaction =
             await _authDbContext.Database
@@ -302,10 +302,12 @@ public sealed class AuthController : ControllerBase
             cancellationToken);
 
         var accessTokenExpiresAtUtc =
-            now.Add(AccessTokenLifetime);
+            now.Add(
+                TimeSpan.FromMinutes(
+                    _jwtOptions.AccessTokenLifetimeMinutes));
 
         var accessToken =
-            CreateAccessToken(
+            _accessTokenService.CreateAccessToken(
                 user,
                 roles,
                 now,
@@ -345,75 +347,6 @@ public sealed class AuthController : ControllerBase
                             x => x.RevocationReason,
                             "ReplayDetected"),
                 cancellationToken);
-    }
-
-    private string CreateAccessToken(
-        AppUser user,
-        IEnumerable<string> roles,
-        DateTimeOffset issuedAtUtc,
-        DateTimeOffset expiresAtUtc)
-    {
-        var issuer =
-            _configuration["Jwt:Issuer"]
-            ?? throw new InvalidOperationException(
-                "JWT issuer is required.");
-
-        var audience =
-            _configuration["Jwt:Audience"]
-            ?? throw new InvalidOperationException(
-                "JWT audience is required.");
-
-        var signingKey =
-            _configuration["Jwt:SigningKey"]
-            ?? throw new InvalidOperationException(
-                "JWT signing key is required.");
-
-        var claims =
-            new List<Claim>
-            {
-                new(
-                    ClaimTypes.NameIdentifier,
-                    user.Id.ToString()),
-                new(
-                    JwtRegisteredClaimNames.Jti,
-                    Guid.NewGuid().ToString("N"))
-            };
-
-        if (!string.IsNullOrWhiteSpace(user.Email))
-        {
-            claims.Add(
-                new Claim(
-                    ClaimTypes.Email,
-                    user.Email));
-        }
-
-        claims.AddRange(
-            roles.Select(
-                role =>
-                    new Claim(
-                        ClaimTypes.Role,
-                        role)));
-
-        var key =
-            new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(signingKey));
-
-        var credentials =
-            new SigningCredentials(
-                key,
-                SecurityAlgorithms.HmacSha256);
-
-        var token =
-            new JwtSecurityToken(
-                issuer: issuer,
-                audience: audience,
-                claims: claims,
-                notBefore: issuedAtUtc.UtcDateTime,
-                expires: expiresAtUtc.UtcDateTime,
-                signingCredentials: credentials);
-
-        return new JwtSecurityTokenHandler()
-            .WriteToken(token);
     }
 
     public sealed record LoginRequest(
