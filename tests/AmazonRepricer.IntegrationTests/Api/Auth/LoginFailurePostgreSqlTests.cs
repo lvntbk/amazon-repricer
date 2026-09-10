@@ -1,3 +1,4 @@
+using AmazonRepricer.IntegrationTests.Api.Auth.Infrastructure;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -52,45 +53,25 @@ public sealed class LoginFailurePostgreSqlTests
         var userId =
             Guid.NewGuid();
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                connectionStringVariable,
+                issuerVariable,
+                audienceVariable,
                 signingKeyVariable);
 
-        try
+try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
+            environment.Set(connectionStringVariable, _database.ConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                "AmazonRepricer.IntegrationTests");
+            environment.Set(issuerVariable, "AmazonRepricer.IntegrationTests");
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                "AmazonRepricer.IntegrationTests");
+            environment.Set(audienceVariable, "AmazonRepricer.IntegrationTests");
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                "integration-test-signing-key-32-bytes-minimum");
+            environment.Set(signingKeyVariable, "integration-test-signing-key-32-bytes-minimum");
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using (var scope =
                 factory.Services.CreateScope())
@@ -208,21 +189,9 @@ public sealed class LoginFailurePostgreSqlTests
                 await cleanup.SaveChangesAsync();
             }
 
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
         }
     }
 
@@ -254,45 +223,25 @@ public sealed class LoginFailurePostgreSqlTests
         var userId =
             Guid.NewGuid();
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                connectionStringVariable,
+                issuerVariable,
+                audienceVariable,
                 signingKeyVariable);
 
-        try
+try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
+            environment.Set(connectionStringVariable, _database.ConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                "AmazonRepricer.IntegrationTests");
+            environment.Set(issuerVariable, "AmazonRepricer.IntegrationTests");
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                "AmazonRepricer.IntegrationTests");
+            environment.Set(audienceVariable, "AmazonRepricer.IntegrationTests");
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                "integration-test-signing-key-32-bytes-minimum");
+            environment.Set(signingKeyVariable, "integration-test-signing-key-32-bytes-minimum");
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using (var scope =
                 factory.Services.CreateScope())
@@ -377,21 +326,9 @@ public sealed class LoginFailurePostgreSqlTests
                 await cleanup.SaveChangesAsync();
             }
 
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
         }
     }
 
@@ -429,45 +366,25 @@ public sealed class LoginFailurePostgreSqlTests
         var userId =
             Guid.NewGuid();
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                connectionStringVariable,
+                issuerVariable,
+                audienceVariable,
                 signingKeyVariable);
 
-        try
+try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
+            environment.Set(connectionStringVariable, _database.ConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                "AmazonRepricer.IntegrationTests");
+            environment.Set(issuerVariable, "AmazonRepricer.IntegrationTests");
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                "AmazonRepricer.IntegrationTests");
+            environment.Set(audienceVariable, "AmazonRepricer.IntegrationTests");
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                "integration-test-signing-key-32-bytes-minimum");
+            environment.Set(signingKeyVariable, "integration-test-signing-key-32-bytes-minimum");
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using (var scope =
                 factory.Services.CreateScope())
@@ -589,21 +506,9 @@ public sealed class LoginFailurePostgreSqlTests
                 await cleanup.SaveChangesAsync();
             }
 
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
         }
     }
 
@@ -638,45 +543,25 @@ public sealed class LoginFailurePostgreSqlTests
         var userId =
             Guid.NewGuid();
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                connectionStringVariable,
+                issuerVariable,
+                audienceVariable,
                 signingKeyVariable);
 
-        try
+try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
+            environment.Set(connectionStringVariable, _database.ConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                "AmazonRepricer.IntegrationTests");
+            environment.Set(issuerVariable, "AmazonRepricer.IntegrationTests");
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                "AmazonRepricer.IntegrationTests");
+            environment.Set(audienceVariable, "AmazonRepricer.IntegrationTests");
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                "integration-test-signing-key-32-bytes-minimum");
+            environment.Set(signingKeyVariable, "integration-test-signing-key-32-bytes-minimum");
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using (var scope =
                 factory.Services.CreateScope())
@@ -762,21 +647,9 @@ public sealed class LoginFailurePostgreSqlTests
                 await cleanup.SaveChangesAsync();
             }
 
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
         }
     }
 }

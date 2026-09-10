@@ -1,18 +1,13 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Security.Claims;
 using System.Text;
 using AmazonRepricer.Application.Auth;
 using AmazonRepricer.Infrastructure.Identity;
+using AmazonRepricer.IntegrationTests.Api.Auth.Infrastructure;
 using AmazonRepricer.IntegrationTests.PostgreSql;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 
 namespace AmazonRepricer.IntegrationTests.Api.Auth;
 
@@ -30,72 +25,17 @@ public sealed class AdminUserLifecyclePostgreSqlTests
     [Fact]
     public async Task CreateUser_AsAdmin_CreatesActiveUserWithRequestedRole()
     {
-        const string connectionStringVariable =
-            "ConnectionStrings__DefaultConnection";
-
-        const string issuerVariable =
-            "Jwt__Issuer";
-
-        const string audienceVariable =
-            "Jwt__Audience";
-
-        const string signingKeyVariable =
-            "Jwt__SigningKey";
-
-        const string issuer =
-            "AmazonRepricer.IntegrationTests";
-
-        const string audience =
-            "AmazonRepricer.IntegrationTests";
-
-        const string signingKey =
-            "integration-test-signing-key-32-bytes-minimum";
-
         const string password =
             "Created-User-2026!";
 
         var email =
             $"admin-created-{Guid.NewGuid():N}@example.test";
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
-                signingKeyVariable);
-
-        try
+        using (AuthTestEnvironmentScope.CreateDefault(
+            _database.ConnectionString))
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
-
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                issuer);
-
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                audience);
-
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                signingKey);
-
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using (var scope =
                 factory.Services.CreateScope())
@@ -124,20 +64,9 @@ public sealed class AdminUserLifecyclePostgreSqlTests
             }
 
             using var client =
-                factory.CreateClient(
-                    new WebApplicationFactoryClientOptions
-                    {
-                        AllowAutoRedirect = false
-                    });
-
-            client.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue(
-                    "Bearer",
-                    CreateToken(
-                        issuer,
-                        audience,
-                        signingKey,
-                        AppRoles.Admin));
+                AuthTestClientFactory.CreateAuthenticated(
+                    factory,
+                    AppRoles.Admin);
 
             var response =
                 await client.PostAsJsonAsync(
@@ -183,24 +112,6 @@ public sealed class AdminUserLifecyclePostgreSqlTests
                 [AppRoles.Operator],
                 roles);
         }
-        finally
-        {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
-
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
-
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
-
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
-        }
     }
 
     [Theory]
@@ -210,88 +121,22 @@ public sealed class AdminUserLifecyclePostgreSqlTests
         string? callerRole,
         HttpStatusCode expectedStatusCode)
     {
-        const string connectionStringVariable =
-            "ConnectionStrings__DefaultConnection";
-
-        const string issuerVariable =
-            "Jwt__Issuer";
-
-        const string audienceVariable =
-            "Jwt__Audience";
-
-        const string signingKeyVariable =
-            "Jwt__SigningKey";
-
-        const string issuer =
-            "AmazonRepricer.IntegrationTests";
-
-        const string audience =
-            "AmazonRepricer.IntegrationTests";
-
-        const string signingKey =
-            "integration-test-signing-key-32-bytes-minimum";
-
         var email =
             $"unauthorized-create-{Guid.NewGuid():N}@example.test";
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
-                signingKeyVariable);
+        using var environment =
+            AuthTestEnvironmentScope.CreateDefault(
+                _database.ConnectionString);
 
         try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
-
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                issuer);
-
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                audience);
-
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                signingKey);
-
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using var client =
-                factory.CreateClient(
-                    new WebApplicationFactoryClientOptions
-                    {
-                        AllowAutoRedirect = false
-                    });
-
-            if (callerRole is not null)
-            {
-                client.DefaultRequestHeaders.Authorization =
-                    new AuthenticationHeaderValue(
-                        "Bearer",
-                        CreateToken(
-                            issuer,
-                            audience,
-                            signingKey,
-                            callerRole));
-            }
+                AuthTestClientFactory.Create(
+                    factory,
+                    callerRole);
 
             var response =
                 await client.PostAsJsonAsync(
@@ -323,48 +168,12 @@ public sealed class AdminUserLifecyclePostgreSqlTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
-
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
-
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
-
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
         }
     }
 
     [Fact]
     public async Task DeactivateUser_AsAdmin_DeactivatesUserAndRevokesActiveRefreshTokens()
     {
-        const string connectionStringVariable =
-            "ConnectionStrings__DefaultConnection";
-
-        const string issuerVariable =
-            "Jwt__Issuer";
-
-        const string audienceVariable =
-            "Jwt__Audience";
-
-        const string signingKeyVariable =
-            "Jwt__SigningKey";
-
-        const string issuer =
-            "AmazonRepricer.IntegrationTests";
-
-        const string audience =
-            "AmazonRepricer.IntegrationTests";
-
-        const string signingKey =
-            "integration-test-signing-key-32-bytes-minimum";
-
         const string password =
             "Target-User-2026!";
 
@@ -377,111 +186,25 @@ public sealed class AdminUserLifecyclePostgreSqlTests
         var refreshTokenId =
             Guid.NewGuid();
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
-                signingKeyVariable);
+        using var environment =
+            AuthTestEnvironmentScope.CreateDefault(
+                _database.ConnectionString);
 
         try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
-
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                issuer);
-
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                audience);
-
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                signingKey);
-
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using (var scope =
                 factory.Services.CreateScope())
             {
-                var roleManager =
-                    scope.ServiceProvider
-                        .GetRequiredService<
-                            RoleManager<IdentityRole<Guid>>>();
-
-                if (!await roleManager.RoleExistsAsync(
-                    AppRoles.Operator))
-                {
-                    var createRoleResult =
-                        await roleManager.CreateAsync(
-                            new IdentityRole<Guid>(
-                                AppRoles.Operator));
-
-                    Assert.True(
-                        createRoleResult.Succeeded,
-                        string.Join(
-                            "; ",
-                            createRoleResult.Errors.Select(
-                                x =>
-                                    $"{x.Code}: {x.Description}")));
-                }
-
-                var userManager =
-                    scope.ServiceProvider
-                        .GetRequiredService<
-                            UserManager<AppUser>>();
-
-                var user =
-                    new AppUser
-                    {
-                        Id = userId,
-                        UserName = email,
-                        Email = email,
-                        EmailConfirmed = true,
-                        IsActive = true
-                    };
-
-                var createResult =
-                    await userManager.CreateAsync(
-                        user,
-                        password);
-
-                Assert.True(
-                    createResult.Succeeded,
-                    string.Join(
-                        "; ",
-                        createResult.Errors.Select(
-                            x =>
-                                $"{x.Code}: {x.Description}")));
-
-                var roleResult =
-                    await userManager.AddToRoleAsync(
-                        user,
-                        AppRoles.Operator);
-
-                Assert.True(
-                    roleResult.Succeeded,
-                    string.Join(
-                        "; ",
-                        roleResult.Errors.Select(
-                            x =>
-                                $"{x.Code}: {x.Description}")));
+                await AuthTestData.CreateUserAsync(
+                    scope.ServiceProvider,
+                    email,
+                    password,
+                    AppRoles.Operator,
+                    isActive: true,
+                    userId: userId);
             }
 
             var tokenCreatedAtUtc =
@@ -513,20 +236,9 @@ public sealed class AdminUserLifecyclePostgreSqlTests
             }
 
             using var client =
-                factory.CreateClient(
-                    new WebApplicationFactoryClientOptions
-                    {
-                        AllowAutoRedirect = false
-                    });
-
-            client.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue(
-                    "Bearer",
-                    CreateToken(
-                        issuer,
-                        audience,
-                        signingKey,
-                        AppRoles.Admin));
+                AuthTestClientFactory.CreateAuthenticated(
+                    factory,
+                    AppRoles.Admin);
 
             var response =
                 await client.PostAsync(
@@ -569,21 +281,6 @@ public sealed class AdminUserLifecyclePostgreSqlTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
-
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
-
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
-
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
         }
     }
 
@@ -591,30 +288,6 @@ public sealed class AdminUserLifecyclePostgreSqlTests
     [Fact]
     public async Task DeactivateUser_WhenUserAlreadyInactive_StillRevokesActiveRefreshTokens()
     {
-        const string connectionStringVariable =
-            "ConnectionStrings__DefaultConnection";
-
-        const string issuerVariable =
-            "Jwt__Issuer";
-
-        const string audienceVariable =
-            "Jwt__Audience";
-
-        const string signingKeyVariable =
-            "Jwt__SigningKey";
-
-        const string bootstrapEnabledVariable =
-            "AuthBootstrap__Enabled";
-
-        const string issuer =
-            "AmazonRepricer.IntegrationTests";
-
-        const string audience =
-            "AmazonRepricer.IntegrationTests";
-
-        const string signingKey =
-            "integration-test-signing-key-32-bytes-minimum";
-
         const string password =
             "Inactive-Target-2026!";
 
@@ -627,97 +300,26 @@ public sealed class AdminUserLifecyclePostgreSqlTests
         var refreshTokenId =
             Guid.NewGuid();
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
-                signingKeyVariable);
-
-        var originalBootstrapEnabled =
-            Environment.GetEnvironmentVariable(
-                bootstrapEnabledVariable);
+        using var environment =
+            AuthTestEnvironmentScope.CreateDefault(
+                _database.ConnectionString,
+                ("AuthBootstrap__Enabled", "false"));
 
         try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
-
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                issuer);
-
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                audience);
-
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                signingKey);
-
-            Environment.SetEnvironmentVariable(
-                bootstrapEnabledVariable,
-                "false");
-
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using (var scope =
                 factory.Services.CreateScope())
             {
-                var userManager =
-                    scope.ServiceProvider
-                        .GetRequiredService<
-                            UserManager<AppUser>>();
-
-                var user =
-                    new AppUser
-                    {
-                        Id = userId,
-                        UserName = email,
-                        Email = email,
-                        EmailConfirmed = true,
-                        IsActive = false
-                    };
-
-                var createResult =
-                    await userManager.CreateAsync(
-                        user,
-                        password);
-
-                Assert.True(
-                    createResult.Succeeded,
-                    string.Join(
-                        "; ",
-                        createResult.Errors.Select(
-                            x =>
-                                $"{x.Code}: {x.Description}")));
-
-                var roleResult =
-                    await userManager.AddToRoleAsync(
-                        user,
-                        AppRoles.Operator);
-
-                Assert.True(
-                    roleResult.Succeeded,
-                    string.Join(
-                        "; ",
-                        roleResult.Errors.Select(
-                            x =>
-                                $"{x.Code}: {x.Description}")));
+                await AuthTestData.CreateUserAsync(
+                    scope.ServiceProvider,
+                    email,
+                    password,
+                    AppRoles.Operator,
+                    isActive: false,
+                    userId: userId);
             }
 
             var tokenCreatedAtUtc =
@@ -749,20 +351,9 @@ public sealed class AdminUserLifecyclePostgreSqlTests
             }
 
             using var client =
-                factory.CreateClient(
-                    new WebApplicationFactoryClientOptions
-                    {
-                        AllowAutoRedirect = false
-                    });
-
-            client.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue(
-                    "Bearer",
-                    CreateToken(
-                        issuer,
-                        audience,
-                        signingKey,
-                        AppRoles.Admin));
+                AuthTestClientFactory.CreateAuthenticated(
+                    factory,
+                    AppRoles.Admin);
 
             var response =
                 await client.PostAsync(
@@ -797,52 +388,12 @@ public sealed class AdminUserLifecyclePostgreSqlTests
                     .ExecuteDeleteAsync();
             }
 
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
-
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
-
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
-
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
-
-            Environment.SetEnvironmentVariable(
-                bootstrapEnabledVariable,
-                originalBootstrapEnabled);
         }
     }
 
     [Fact]
     public async Task DeactivateUser_WhenUserIsLastActiveAdmin_IsRejected()
     {
-        const string connectionStringVariable =
-            "ConnectionStrings__DefaultConnection";
-
-        const string issuerVariable =
-            "Jwt__Issuer";
-
-        const string audienceVariable =
-            "Jwt__Audience";
-
-        const string signingKeyVariable =
-            "Jwt__SigningKey";
-
-        const string issuer =
-            "AmazonRepricer.IntegrationTests";
-
-        const string audience =
-            "AmazonRepricer.IntegrationTests";
-
-        const string signingKey =
-            "integration-test-signing-key-32-bytes-minimum";
-
         const string password =
             "Last-Admin-2026!";
 
@@ -855,111 +406,30 @@ public sealed class AdminUserLifecyclePostgreSqlTests
         var refreshTokenId =
             Guid.NewGuid();
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
-                signingKeyVariable);
+        using var environment =
+            AuthTestEnvironmentScope.CreateDefault(
+                _database.ConnectionString);
 
         try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
-
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                issuer);
-
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                audience);
-
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                signingKey);
-
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using (var scope =
                 factory.Services.CreateScope())
             {
-                var roleManager =
-                    scope.ServiceProvider
-                        .GetRequiredService<
-                            RoleManager<IdentityRole<Guid>>>();
-
-                if (!await roleManager.RoleExistsAsync(
-                    AppRoles.Admin))
-                {
-                    var createRoleResult =
-                        await roleManager.CreateAsync(
-                            new IdentityRole<Guid>(
-                                AppRoles.Admin));
-
-                    Assert.True(
-                        createRoleResult.Succeeded,
-                        string.Join(
-                            "; ",
-                            createRoleResult.Errors.Select(
-                                x =>
-                                    $"{x.Code}: {x.Description}")));
-                }
+                await AuthTestData.CreateUserAsync(
+                    scope.ServiceProvider,
+                    email,
+                    password,
+                    AppRoles.Admin,
+                    isActive: true,
+                    userId: userId);
 
                 var userManager =
                     scope.ServiceProvider
                         .GetRequiredService<
                             UserManager<AppUser>>();
-
-                var user =
-                    new AppUser
-                    {
-                        Id = userId,
-                        UserName = email,
-                        Email = email,
-                        EmailConfirmed = true,
-                        IsActive = true
-                    };
-
-                var createResult =
-                    await userManager.CreateAsync(
-                        user,
-                        password);
-
-                Assert.True(
-                    createResult.Succeeded,
-                    string.Join(
-                        "; ",
-                        createResult.Errors.Select(
-                            x =>
-                                $"{x.Code}: {x.Description}")));
-
-                var roleResult =
-                    await userManager.AddToRoleAsync(
-                        user,
-                        AppRoles.Admin);
-
-                Assert.True(
-                    roleResult.Succeeded,
-                    string.Join(
-                        "; ",
-                        roleResult.Errors.Select(
-                            x =>
-                                $"{x.Code}: {x.Description}")));
 
                 var admins =
                     await userManager.GetUsersInRoleAsync(
@@ -999,20 +469,9 @@ public sealed class AdminUserLifecyclePostgreSqlTests
             }
 
             using var client =
-                factory.CreateClient(
-                    new WebApplicationFactoryClientOptions
-                    {
-                        AllowAutoRedirect = false
-                    });
-
-            client.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue(
-                    "Bearer",
-                    CreateToken(
-                        issuer,
-                        audience,
-                        signingKey,
-                        AppRoles.Admin));
+                AuthTestClientFactory.CreateAuthenticated(
+                    factory,
+                    AppRoles.Admin);
 
             var response =
                 await client.PostAsync(
@@ -1060,48 +519,12 @@ public sealed class AdminUserLifecyclePostgreSqlTests
                     .ExecuteDeleteAsync();
             }
 
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
-
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
-
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
-
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
         }
     }
 
     [Fact]
     public async Task ChangeUserRole_AsAdmin_ChangesRoleAndRevokesActiveRefreshTokens()
     {
-        const string connectionStringVariable =
-            "ConnectionStrings__DefaultConnection";
-
-        const string issuerVariable =
-            "Jwt__Issuer";
-
-        const string audienceVariable =
-            "Jwt__Audience";
-
-        const string signingKeyVariable =
-            "Jwt__SigningKey";
-
-        const string issuer =
-            "AmazonRepricer.IntegrationTests";
-
-        const string audience =
-            "AmazonRepricer.IntegrationTests";
-
-        const string signingKey =
-            "integration-test-signing-key-32-bytes-minimum";
-
         const string password =
             "Role-Target-2026!";
 
@@ -1114,116 +537,29 @@ public sealed class AdminUserLifecyclePostgreSqlTests
         var refreshTokenId =
             Guid.NewGuid();
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
-                signingKeyVariable);
+        using var environment =
+            AuthTestEnvironmentScope.CreateDefault(
+                _database.ConnectionString);
 
         try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
-
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                issuer);
-
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                audience);
-
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                signingKey);
-
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using (var scope =
                 factory.Services.CreateScope())
             {
-                var roleManager =
-                    scope.ServiceProvider
-                        .GetRequiredService<
-                            RoleManager<IdentityRole<Guid>>>();
+                await AuthTestData.EnsureRoleAsync(
+                    scope.ServiceProvider,
+                    AppRoles.Admin);
 
-                foreach (var role in new[]
-                {
-                    AppRoles.Admin,
-                    AppRoles.Operator
-                })
-                {
-                    if (!await roleManager.RoleExistsAsync(role))
-                    {
-                        var createRoleResult =
-                            await roleManager.CreateAsync(
-                                new IdentityRole<Guid>(role));
-
-                        Assert.True(
-                            createRoleResult.Succeeded,
-                            string.Join(
-                                "; ",
-                                createRoleResult.Errors.Select(
-                                    x =>
-                                        $"{x.Code}: {x.Description}")));
-                    }
-                }
-
-                var userManager =
-                    scope.ServiceProvider
-                        .GetRequiredService<
-                            UserManager<AppUser>>();
-
-                var user =
-                    new AppUser
-                    {
-                        Id = userId,
-                        UserName = email,
-                        Email = email,
-                        EmailConfirmed = true,
-                        IsActive = true
-                    };
-
-                var createResult =
-                    await userManager.CreateAsync(
-                        user,
-                        password);
-
-                Assert.True(
-                    createResult.Succeeded,
-                    string.Join(
-                        "; ",
-                        createResult.Errors.Select(
-                            x =>
-                                $"{x.Code}: {x.Description}")));
-
-                var roleResult =
-                    await userManager.AddToRoleAsync(
-                        user,
-                        AppRoles.Operator);
-
-                Assert.True(
-                    roleResult.Succeeded,
-                    string.Join(
-                        "; ",
-                        roleResult.Errors.Select(
-                            x =>
-                                $"{x.Code}: {x.Description}")));
+                await AuthTestData.CreateUserAsync(
+                    scope.ServiceProvider,
+                    email,
+                    password,
+                    AppRoles.Operator,
+                    isActive: true,
+                    userId: userId);
             }
 
             var tokenCreatedAtUtc =
@@ -1255,20 +591,9 @@ public sealed class AdminUserLifecyclePostgreSqlTests
             }
 
             using var client =
-                factory.CreateClient(
-                    new WebApplicationFactoryClientOptions
-                    {
-                        AllowAutoRedirect = false
-                    });
-
-            client.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue(
-                    "Bearer",
-                    CreateToken(
-                        issuer,
-                        audience,
-                        signingKey,
-                        AppRoles.Admin));
+                AuthTestClientFactory.CreateAuthenticated(
+                    factory,
+                    AppRoles.Admin);
 
             var response =
                 await client.PutAsJsonAsync(
@@ -1329,48 +654,12 @@ public sealed class AdminUserLifecyclePostgreSqlTests
                     .ExecuteDeleteAsync();
             }
 
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
-
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
-
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
-
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
         }
     }
 
     [Fact]
     public async Task ChangeUserRole_WhenUserIsLastActiveAdmin_IsRejected()
     {
-        const string connectionStringVariable =
-            "ConnectionStrings__DefaultConnection";
-
-        const string issuerVariable =
-            "Jwt__Issuer";
-
-        const string audienceVariable =
-            "Jwt__Audience";
-
-        const string signingKeyVariable =
-            "Jwt__SigningKey";
-
-        const string issuer =
-            "AmazonRepricer.IntegrationTests";
-
-        const string audience =
-            "AmazonRepricer.IntegrationTests";
-
-        const string signingKey =
-            "integration-test-signing-key-32-bytes-minimum";
-
         const string password =
             "Last-Admin-Role-2026!";
 
@@ -1383,116 +672,34 @@ public sealed class AdminUserLifecyclePostgreSqlTests
         var refreshTokenId =
             Guid.NewGuid();
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
-                signingKeyVariable);
+        using var environment =
+            AuthTestEnvironmentScope.CreateDefault(
+                _database.ConnectionString);
 
         try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
-
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                issuer);
-
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                audience);
-
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                signingKey);
-
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using (var scope =
                 factory.Services.CreateScope())
             {
-                var roleManager =
-                    scope.ServiceProvider
-                        .GetRequiredService<
-                            RoleManager<IdentityRole<Guid>>>();
+                await AuthTestData.EnsureRoleAsync(
+                    scope.ServiceProvider,
+                    AppRoles.Operator);
 
-                foreach (var role in new[]
-                {
+                await AuthTestData.CreateUserAsync(
+                    scope.ServiceProvider,
+                    email,
+                    password,
                     AppRoles.Admin,
-                    AppRoles.Operator
-                })
-                {
-                    if (!await roleManager.RoleExistsAsync(role))
-                    {
-                        var createRoleResult =
-                            await roleManager.CreateAsync(
-                                new IdentityRole<Guid>(role));
-
-                        Assert.True(
-                            createRoleResult.Succeeded,
-                            string.Join(
-                                "; ",
-                                createRoleResult.Errors.Select(
-                                    x =>
-                                        $"{x.Code}: {x.Description}")));
-                    }
-                }
+                    isActive: true,
+                    userId: userId);
 
                 var userManager =
                     scope.ServiceProvider
                         .GetRequiredService<
                             UserManager<AppUser>>();
-
-                var user =
-                    new AppUser
-                    {
-                        Id = userId,
-                        UserName = email,
-                        Email = email,
-                        EmailConfirmed = true,
-                        IsActive = true
-                    };
-
-                var createResult =
-                    await userManager.CreateAsync(
-                        user,
-                        password);
-
-                Assert.True(
-                    createResult.Succeeded,
-                    string.Join(
-                        "; ",
-                        createResult.Errors.Select(
-                            x =>
-                                $"{x.Code}: {x.Description}")));
-
-                var roleResult =
-                    await userManager.AddToRoleAsync(
-                        user,
-                        AppRoles.Admin);
-
-                Assert.True(
-                    roleResult.Succeeded,
-                    string.Join(
-                        "; ",
-                        roleResult.Errors.Select(
-                            x =>
-                                $"{x.Code}: {x.Description}")));
 
                 var admins =
                     await userManager.GetUsersInRoleAsync(
@@ -1532,20 +739,9 @@ public sealed class AdminUserLifecyclePostgreSqlTests
             }
 
             using var client =
-                factory.CreateClient(
-                    new WebApplicationFactoryClientOptions
-                    {
-                        AllowAutoRedirect = false
-                    });
-
-            client.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue(
-                    "Bearer",
-                    CreateToken(
-                        issuer,
-                        audience,
-                        signingKey,
-                        AppRoles.Admin));
+                AuthTestClientFactory.CreateAuthenticated(
+                    factory,
+                    AppRoles.Admin);
 
             var response =
                 await client.PutAsJsonAsync(
@@ -1603,21 +799,6 @@ public sealed class AdminUserLifecyclePostgreSqlTests
                     .ExecuteDeleteAsync();
             }
 
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
-
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
-
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
-
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
         }
     }
 
@@ -1628,69 +809,17 @@ public sealed class AdminUserLifecyclePostgreSqlTests
         string password,
         string role)
     {
-        const string connectionStringVariable =
-            "ConnectionStrings__DefaultConnection";
-
-        const string issuerVariable =
-            "Jwt__Issuer";
-
-        const string audienceVariable =
-            "Jwt__Audience";
-
-        const string signingKeyVariable =
-            "Jwt__SigningKey";
-
-        const string issuer =
-            "AmazonRepricer.IntegrationTests";
-
-        const string audience =
-            "AmazonRepricer.IntegrationTests";
-
-        const string signingKey =
-            "integration-test-signing-key-32-bytes-minimum";
-
         var email =
             $"invalid-create-{Guid.NewGuid():N}@example.test";
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
-                signingKeyVariable);
+        using var environment =
+            AuthTestEnvironmentScope.CreateDefault(
+                _database.ConnectionString);
 
         try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
-
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                issuer);
-
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                audience);
-
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                signingKey);
-
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using (var scope =
                 factory.Services.CreateScope())
@@ -1719,20 +848,9 @@ public sealed class AdminUserLifecyclePostgreSqlTests
             }
 
             using var client =
-                factory.CreateClient(
-                    new WebApplicationFactoryClientOptions
-                    {
-                        AllowAutoRedirect = false
-                    });
-
-            client.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue(
-                    "Bearer",
-                    CreateToken(
-                        issuer,
-                        audience,
-                        signingKey,
-                        AppRoles.Admin));
+                AuthTestClientFactory.CreateAuthenticated(
+                    factory,
+                    AppRoles.Admin);
 
             var response =
                 await client.PostAsJsonAsync(
@@ -1764,48 +882,12 @@ public sealed class AdminUserLifecyclePostgreSqlTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
-
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
-
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
-
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
         }
     }
 
     [Fact]
     public async Task CreateUser_WithDuplicateEmail_IsRejectedAndDoesNotCreateSecondUser()
     {
-        const string connectionStringVariable =
-            "ConnectionStrings__DefaultConnection";
-
-        const string issuerVariable =
-            "Jwt__Issuer";
-
-        const string audienceVariable =
-            "Jwt__Audience";
-
-        const string signingKeyVariable =
-            "Jwt__SigningKey";
-
-        const string issuer =
-            "AmazonRepricer.IntegrationTests";
-
-        const string audience =
-            "AmazonRepricer.IntegrationTests";
-
-        const string signingKey =
-            "integration-test-signing-key-32-bytes-minimum";
-
         const string existingPassword =
             "Existing-User-2026!";
 
@@ -1815,133 +897,33 @@ public sealed class AdminUserLifecyclePostgreSqlTests
         var email =
             $"duplicate-{Guid.NewGuid():N}@example.test";
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
-                signingKeyVariable);
+        using var environment =
+            AuthTestEnvironmentScope.CreateDefault(
+                _database.ConnectionString);
 
         try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
-
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                issuer);
-
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                audience);
-
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                signingKey);
-
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using (var scope =
                 factory.Services.CreateScope())
             {
-                var roleManager =
-                    scope.ServiceProvider
-                        .GetRequiredService<
-                            RoleManager<IdentityRole<Guid>>>();
+                await AuthTestData.EnsureRoleAsync(
+                    scope.ServiceProvider,
+                    AppRoles.Admin);
 
-                foreach (var role in new[]
-                {
-                    AppRoles.Admin,
-                    AppRoles.Operator
-                })
-                {
-                    if (!await roleManager.RoleExistsAsync(role))
-                    {
-                        var createRoleResult =
-                            await roleManager.CreateAsync(
-                                new IdentityRole<Guid>(role));
-
-                        Assert.True(
-                            createRoleResult.Succeeded,
-                            string.Join(
-                                "; ",
-                                createRoleResult.Errors.Select(
-                                    x =>
-                                        $"{x.Code}: {x.Description}")));
-                    }
-                }
-
-                var seedUserManager =
-                    scope.ServiceProvider
-                        .GetRequiredService<
-                            UserManager<AppUser>>();
-
-                var existingUser =
-                    new AppUser
-                    {
-                        Id = Guid.NewGuid(),
-                        UserName = email,
-                        Email = email,
-                        EmailConfirmed = true,
-                        IsActive = true
-                    };
-
-                var createResult =
-                    await seedUserManager.CreateAsync(
-                        existingUser,
-                        existingPassword);
-
-                Assert.True(
-                    createResult.Succeeded,
-                    string.Join(
-                        "; ",
-                        createResult.Errors.Select(
-                            x =>
-                                $"{x.Code}: {x.Description}")));
-
-                var roleResult =
-                    await seedUserManager.AddToRoleAsync(
-                        existingUser,
-                        AppRoles.Operator);
-
-                Assert.True(
-                    roleResult.Succeeded,
-                    string.Join(
-                        "; ",
-                        roleResult.Errors.Select(
-                            x =>
-                                $"{x.Code}: {x.Description}")));
+                await AuthTestData.CreateUserAsync(
+                    scope.ServiceProvider,
+                    email,
+                    existingPassword,
+                    AppRoles.Operator);
             }
 
             using var client =
-                factory.CreateClient(
-                    new WebApplicationFactoryClientOptions
-                    {
-                        AllowAutoRedirect = false
-                    });
-
-            client.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue(
-                    "Bearer",
-                    CreateToken(
-                        issuer,
-                        audience,
-                        signingKey,
-                        AppRoles.Admin));
+                AuthTestClientFactory.CreateAuthenticated(
+                    factory,
+                    AppRoles.Admin);
 
             var response =
                 await client.PostAsJsonAsync(
@@ -1995,61 +977,7 @@ public sealed class AdminUserLifecyclePostgreSqlTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
-
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
-
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
-
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
         }
     }
 
-    private static string CreateToken(
-        string issuer,
-        string audience,
-        string signingKey,
-        string role)
-    {
-        var key =
-            new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(
-                    signingKey));
-
-        var credentials =
-            new SigningCredentials(
-                key,
-                SecurityAlgorithms.HmacSha256);
-
-        var token =
-            new JwtSecurityToken(
-                issuer: issuer,
-                audience: audience,
-                claims:
-                [
-                    new Claim(
-                        ClaimTypes.NameIdentifier,
-                        Guid.NewGuid().ToString()),
-                    new Claim(
-                        ClaimTypes.Role,
-                        role)
-                ],
-                notBefore:
-                    DateTime.UtcNow.AddMinutes(-1),
-                expires:
-                    DateTime.UtcNow.AddMinutes(10),
-                signingCredentials:
-                    credentials);
-
-        return new JwtSecurityTokenHandler()
-            .WriteToken(token);
-    }
 }

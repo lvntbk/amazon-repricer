@@ -1,3 +1,4 @@
+using AmazonRepricer.IntegrationTests.Api.Auth.Infrastructure;
 using System.Net;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Headers;
@@ -48,45 +49,28 @@ public sealed class AuthorizationPostgreSqlTests
         const string signingKey =
             "integration-test-signing-key-32-bytes-minimum";
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                connectionStringVariable,
+                issuerVariable,
+                audienceVariable,
                 signingKeyVariable);
 
-        try
+try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
+            environment.Set(connectionStringVariable, _database.ConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
+            environment.Set(issuerVariable,
                 issuer);
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
+            environment.Set(audienceVariable,
                 audience);
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
+            environment.Set(signingKeyVariable,
                 signingKey);
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using var client = factory.CreateClient(
                 new WebApplicationFactoryClientOptions
@@ -124,21 +108,9 @@ public sealed class AuthorizationPostgreSqlTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
         }
     }
 
@@ -181,45 +153,28 @@ public sealed class AuthorizationPostgreSqlTests
             await dbContext.SaveChangesAsync();
         }
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                connectionStringVariable,
+                issuerVariable,
+                audienceVariable,
                 signingKeyVariable);
 
-        try
+try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
+            environment.Set(connectionStringVariable, _database.ConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
+            environment.Set(issuerVariable,
                 issuer);
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
+            environment.Set(audienceVariable,
                 audience);
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
+            environment.Set(signingKeyVariable,
                 signingKey);
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using var client = factory.CreateClient(
                 new WebApplicationFactoryClientOptions
@@ -257,21 +212,9 @@ public sealed class AuthorizationPostgreSqlTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
 
             await using var cleanup =
                 _database.CreateDbContext();
@@ -315,45 +258,28 @@ public sealed class AuthorizationPostgreSqlTests
         const string invalidSigningKey =
             "different-integration-signing-key-32-bytes";
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                connectionStringVariable,
+                issuerVariable,
+                audienceVariable,
                 signingKeyVariable);
 
-        try
+try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
+            environment.Set(connectionStringVariable, _database.ConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
+            environment.Set(issuerVariable,
                 issuer);
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
+            environment.Set(audienceVariable,
                 audience);
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
+            environment.Set(signingKeyVariable,
                 validSigningKey);
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using var client = factory.CreateClient(
                 new WebApplicationFactoryClientOptions
@@ -381,21 +307,9 @@ public sealed class AuthorizationPostgreSqlTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
         }
     }
 
@@ -424,45 +338,28 @@ public sealed class AuthorizationPostgreSqlTests
         const string signingKey =
             "integration-test-signing-key-32-bytes-minimum";
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                connectionStringVariable,
+                issuerVariable,
+                audienceVariable,
                 signingKeyVariable);
 
-        try
+try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
+            environment.Set(connectionStringVariable, _database.ConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
+            environment.Set(issuerVariable,
                 issuer);
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
+            environment.Set(audienceVariable,
                 audience);
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
+            environment.Set(signingKeyVariable,
                 signingKey);
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using var client = factory.CreateClient(
                 new WebApplicationFactoryClientOptions
@@ -490,21 +387,9 @@ public sealed class AuthorizationPostgreSqlTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
         }
     }
 
@@ -524,45 +409,25 @@ public sealed class AuthorizationPostgreSqlTests
         const string signingKeyVariable =
             "Jwt__SigningKey";
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                connectionStringVariable,
+                issuerVariable,
+                audienceVariable,
                 signingKeyVariable);
 
-        try
+try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
+            environment.Set(connectionStringVariable, _database.ConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                "AmazonRepricer.IntegrationTests");
+            environment.Set(issuerVariable, "AmazonRepricer.IntegrationTests");
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                "AmazonRepricer.IntegrationTests");
+            environment.Set(audienceVariable, "AmazonRepricer.IntegrationTests");
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                "integration-test-signing-key-32-bytes-minimum");
+            environment.Set(signingKeyVariable, "integration-test-signing-key-32-bytes-minimum");
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using var client = factory.CreateClient(
                 new WebApplicationFactoryClientOptions
@@ -579,21 +444,9 @@ public sealed class AuthorizationPostgreSqlTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
         }
     }
     [Fact]
@@ -611,45 +464,25 @@ public sealed class AuthorizationPostgreSqlTests
         const string signingKeyVariable =
             "Jwt__SigningKey";
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                connectionStringVariable,
+                issuerVariable,
+                audienceVariable,
                 signingKeyVariable);
 
-        try
+try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
+            environment.Set(connectionStringVariable, _database.ConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                "AmazonRepricer.IntegrationTests");
+            environment.Set(issuerVariable, "AmazonRepricer.IntegrationTests");
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                "AmazonRepricer.IntegrationTests");
+            environment.Set(audienceVariable, "AmazonRepricer.IntegrationTests");
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                "integration-test-signing-key-32-bytes-minimum");
+            environment.Set(signingKeyVariable, "integration-test-signing-key-32-bytes-minimum");
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using var client = factory.CreateClient(
                 new WebApplicationFactoryClientOptions
@@ -666,21 +499,9 @@ public sealed class AuthorizationPostgreSqlTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
         }
     }
     [Theory]
@@ -727,45 +548,28 @@ public sealed class AuthorizationPostgreSqlTests
         const string signingKey =
             "integration-test-signing-key-32-bytes-minimum";
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                connectionStringVariable,
+                issuerVariable,
+                audienceVariable,
                 signingKeyVariable);
 
-        try
+try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
+            environment.Set(connectionStringVariable, _database.ConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
+            environment.Set(issuerVariable,
                 issuer);
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
+            environment.Set(audienceVariable,
                 audience);
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
+            environment.Set(signingKeyVariable,
                 signingKey);
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using var client =
                 factory.CreateClient(
@@ -808,21 +612,9 @@ public sealed class AuthorizationPostgreSqlTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
         }
     }
 

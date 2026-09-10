@@ -1,3 +1,4 @@
+using AmazonRepricer.IntegrationTests.Api.Auth.Infrastructure;
 using System.Net;
 using System.Net.Http.Json;
 using AmazonRepricer.Application.Auth;
@@ -47,25 +48,19 @@ public sealed class JwtLifetimeConfigurationPostgreSqlTests
                     "false"
             };
 
-        var originals =
-            variables.Keys.ToDictionary(
-                key => key,
-                Environment.GetEnvironmentVariable);
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                variables.Keys.ToArray());
 
         try
         {
             foreach (var variable in variables)
             {
-                Environment.SetEnvironmentVariable(
-                    variable.Key,
-                    variable.Value);
+                environment.Set(variable.Key, variable.Value);
             }
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using (var scope =
                 factory.Services.CreateScope())
@@ -148,12 +143,6 @@ public sealed class JwtLifetimeConfigurationPostgreSqlTests
         }
         finally
         {
-            foreach (var original in originals)
-            {
-                Environment.SetEnvironmentVariable(
-                    original.Key,
-                    original.Value);
-            }
         }
     }
 
@@ -189,25 +178,19 @@ public sealed class JwtLifetimeConfigurationPostgreSqlTests
                     "false"
             };
 
-        var originals =
-            variables.Keys.ToDictionary(
-                key => key,
-                Environment.GetEnvironmentVariable);
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                variables.Keys.ToArray());
 
         try
         {
             foreach (var variable in variables)
             {
-                Environment.SetEnvironmentVariable(
-                    variable.Key,
-                    variable.Value);
+                environment.Set(variable.Key, variable.Value);
             }
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using (var scope =
                 factory.Services.CreateScope())
@@ -290,12 +273,6 @@ public sealed class JwtLifetimeConfigurationPostgreSqlTests
         }
         finally
         {
-            foreach (var original in originals)
-            {
-                Environment.SetEnvironmentVariable(
-                    original.Key,
-                    original.Value);
-            }
         }
     }
 
@@ -325,25 +302,19 @@ public sealed class JwtLifetimeConfigurationPostgreSqlTests
                     "false"
             };
 
-        var originals =
-            variables.Keys.ToDictionary(
-                key => key,
-                Environment.GetEnvironmentVariable);
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                variables.Keys.ToArray());
 
         try
         {
             foreach (var variable in variables)
             {
-                Environment.SetEnvironmentVariable(
-                    variable.Key,
-                    variable.Value);
+                environment.Set(variable.Key, variable.Value);
             }
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using (var scope =
                 factory.Services.CreateScope())
@@ -449,12 +420,6 @@ public sealed class JwtLifetimeConfigurationPostgreSqlTests
         }
         finally
         {
-            foreach (var original in originals)
-            {
-                Environment.SetEnvironmentVariable(
-                    original.Key,
-                    original.Value);
-            }
         }
     }
 

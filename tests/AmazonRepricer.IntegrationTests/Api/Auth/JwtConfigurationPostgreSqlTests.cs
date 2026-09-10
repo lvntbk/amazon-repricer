@@ -1,3 +1,4 @@
+using AmazonRepricer.IntegrationTests.Api.Auth.Infrastructure;
 using AmazonRepricer.IntegrationTests.PostgreSql;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -39,25 +40,19 @@ public sealed class JwtConfigurationPostgreSqlTests
                     "false"
             };
 
-        var originals =
-            variables.Keys.ToDictionary(
-                key => key,
-                Environment.GetEnvironmentVariable);
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                variables.Keys.ToArray());
 
         try
         {
             foreach (var variable in variables)
             {
-                Environment.SetEnvironmentVariable(
-                    variable.Key,
-                    variable.Value);
+                environment.Set(variable.Key, variable.Value);
             }
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             var exception =
                 await Assert.ThrowsAnyAsync<Exception>(
@@ -80,12 +75,6 @@ public sealed class JwtConfigurationPostgreSqlTests
         }
         finally
         {
-            foreach (var original in originals)
-            {
-                Environment.SetEnvironmentVariable(
-                    original.Key,
-                    original.Value);
-            }
         }
     }
     [Fact]
@@ -109,25 +98,19 @@ public sealed class JwtConfigurationPostgreSqlTests
                     "false"
             };
 
-        var originals =
-            variables.Keys.ToDictionary(
-                key => key,
-                Environment.GetEnvironmentVariable);
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                variables.Keys.ToArray());
 
         try
         {
             foreach (var variable in variables)
             {
-                Environment.SetEnvironmentVariable(
-                    variable.Key,
-                    variable.Value);
+                environment.Set(variable.Key, variable.Value);
             }
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using var client =
                 factory.CreateClient(
@@ -145,12 +128,6 @@ public sealed class JwtConfigurationPostgreSqlTests
         }
         finally
         {
-            foreach (var original in originals)
-            {
-                Environment.SetEnvironmentVariable(
-                    original.Key,
-                    original.Value);
-            }
         }
     }
 
@@ -187,25 +164,19 @@ public sealed class JwtConfigurationPostgreSqlTests
         variables[variableName] =
             variableValue;
 
-        var originals =
-            variables.Keys.ToDictionary(
-                key => key,
-                Environment.GetEnvironmentVariable);
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                variables.Keys.ToArray());
 
         try
         {
             foreach (var variable in variables)
             {
-                Environment.SetEnvironmentVariable(
-                    variable.Key,
-                    variable.Value);
+                environment.Set(variable.Key, variable.Value);
             }
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             var exception =
                 await Assert.ThrowsAnyAsync<Exception>(
@@ -228,12 +199,6 @@ public sealed class JwtConfigurationPostgreSqlTests
         }
         finally
         {
-            foreach (var original in originals)
-            {
-                Environment.SetEnvironmentVariable(
-                    original.Key,
-                    original.Value);
-            }
         }
     }
 
@@ -265,25 +230,19 @@ public sealed class JwtConfigurationPostgreSqlTests
                     "false"
             };
 
-        var originals =
-            variables.Keys.ToDictionary(
-                key => key,
-                Environment.GetEnvironmentVariable);
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                variables.Keys.ToArray());
 
         try
         {
             foreach (var variable in variables)
             {
-                Environment.SetEnvironmentVariable(
-                    variable.Key,
-                    variable.Value);
+                environment.Set(variable.Key, variable.Value);
             }
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using var client =
                 factory.CreateClient(
@@ -296,12 +255,6 @@ public sealed class JwtConfigurationPostgreSqlTests
         }
         finally
         {
-            foreach (var original in originals)
-            {
-                Environment.SetEnvironmentVariable(
-                    original.Key,
-                    original.Value);
-            }
         }
     }
 
@@ -338,25 +291,19 @@ public sealed class JwtConfigurationPostgreSqlTests
         variables[variableName] =
             variableValue;
 
-        var originals =
-            variables.Keys.ToDictionary(
-                key => key,
-                Environment.GetEnvironmentVariable);
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                variables.Keys.ToArray());
 
         try
         {
             foreach (var variable in variables)
             {
-                Environment.SetEnvironmentVariable(
-                    variable.Key,
-                    variable.Value);
+                environment.Set(variable.Key, variable.Value);
             }
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             var exception =
                 await Assert.ThrowsAnyAsync<Exception>(
@@ -379,12 +326,6 @@ public sealed class JwtConfigurationPostgreSqlTests
         }
         finally
         {
-            foreach (var original in originals)
-            {
-                Environment.SetEnvironmentVariable(
-                    original.Key,
-                    original.Value);
-            }
         }
     }
 
@@ -410,10 +351,9 @@ public sealed class JwtConfigurationPostgreSqlTests
                     "false"
             };
 
-        var originals =
-            variables.Keys.ToDictionary(
-                key => key,
-                Environment.GetEnvironmentVariable);
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                variables.Keys.ToArray());
 
         try
         {
@@ -447,16 +387,11 @@ public sealed class JwtConfigurationPostgreSqlTests
 
             foreach (var variable in variables)
             {
-                Environment.SetEnvironmentVariable(
-                    variable.Key,
-                    variable.Value);
+                environment.Set(variable.Key, variable.Value);
             }
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             await Assert.ThrowsAnyAsync<Exception>(
                 async () =>
@@ -482,12 +417,6 @@ public sealed class JwtConfigurationPostgreSqlTests
         }
         finally
         {
-            foreach (var original in originals)
-            {
-                Environment.SetEnvironmentVariable(
-                    original.Key,
-                    original.Value);
-            }
         }
     }
 

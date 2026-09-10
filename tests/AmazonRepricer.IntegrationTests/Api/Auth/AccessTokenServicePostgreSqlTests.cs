@@ -1,3 +1,4 @@
+using AmazonRepricer.IntegrationTests.Api.Auth.Infrastructure;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using AmazonRepricer.Api.Auth;
@@ -39,25 +40,19 @@ public sealed class AccessTokenServicePostgreSqlTests
                     "false"
             };
 
-        var originals =
-            variables.Keys.ToDictionary(
-                key => key,
-                Environment.GetEnvironmentVariable);
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                variables.Keys.ToArray());
 
         try
         {
             foreach (var variable in variables)
             {
-                Environment.SetEnvironmentVariable(
-                    variable.Key,
-                    variable.Value);
+                environment.Set(variable.Key, variable.Value);
             }
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using var client =
                 factory.CreateClient(
@@ -158,12 +153,6 @@ public sealed class AccessTokenServicePostgreSqlTests
         }
         finally
         {
-            foreach (var original in originals)
-            {
-                Environment.SetEnvironmentVariable(
-                    original.Key,
-                    original.Value);
-            }
         }
     }
 }

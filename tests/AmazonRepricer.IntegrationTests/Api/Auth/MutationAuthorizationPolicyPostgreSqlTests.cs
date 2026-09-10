@@ -1,3 +1,4 @@
+using AmazonRepricer.IntegrationTests.Api.Auth.Infrastructure;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Headers;
@@ -97,45 +98,28 @@ public sealed class MutationAuthorizationPolicyPostgreSqlTests
         const string signingKey =
             "integration-test-signing-key-32-bytes-minimum";
 
-        var originalConnectionString =
-            Environment.GetEnvironmentVariable(
-                connectionStringVariable);
-
-        var originalIssuer =
-            Environment.GetEnvironmentVariable(
-                issuerVariable);
-
-        var originalAudience =
-            Environment.GetEnvironmentVariable(
-                audienceVariable);
-
-        var originalSigningKey =
-            Environment.GetEnvironmentVariable(
+        using var environment =
+            AuthTestEnvironmentScope.Capture(
+                connectionStringVariable,
+                issuerVariable,
+                audienceVariable,
                 signingKeyVariable);
 
-        try
+try
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                _database.ConnectionString);
+            environment.Set(connectionStringVariable, _database.ConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
+            environment.Set(issuerVariable,
                 issuer);
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
+            environment.Set(audienceVariable,
                 audience);
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
+            environment.Set(signingKeyVariable,
                 signingKey);
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using var client =
                 factory.CreateClient(
@@ -182,21 +166,9 @@ public sealed class MutationAuthorizationPolicyPostgreSqlTests
         }
         finally
         {
-            Environment.SetEnvironmentVariable(
-                connectionStringVariable,
-                originalConnectionString);
 
-            Environment.SetEnvironmentVariable(
-                issuerVariable,
-                originalIssuer);
 
-            Environment.SetEnvironmentVariable(
-                audienceVariable,
-                originalAudience);
 
-            Environment.SetEnvironmentVariable(
-                signingKeyVariable,
-                originalSigningKey);
         }
     }
 

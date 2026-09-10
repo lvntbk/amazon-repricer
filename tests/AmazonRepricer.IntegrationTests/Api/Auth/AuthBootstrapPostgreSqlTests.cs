@@ -1,3 +1,4 @@
+using AmazonRepricer.IntegrationTests.Api.Auth.Infrastructure;
 using AmazonRepricer.Application.Auth;
 using AmazonRepricer.Infrastructure.Identity;
 using AmazonRepricer.IntegrationTests.PostgreSql;
@@ -29,32 +30,13 @@ public sealed class AuthBootstrapPostgreSqlTests
         const string password =
             "Initial-Admin-2026!";
 
-        var variables =
-            new Dictionary<string, string?>
-            {
-                ["ConnectionStrings__DefaultConnection"] =
-                    _database.ConnectionString,
-                ["Jwt__Issuer"] =
-                    "AmazonRepricer.IntegrationTests",
-                ["Jwt__Audience"] =
-                    "AmazonRepricer.IntegrationTests",
-                ["Jwt__SigningKey"] =
-                    "integration-test-signing-key-32-bytes-minimum",
-                ["AuthBootstrap__Enabled"] =
-                    "true",
-                ["AuthBootstrap__AdminEmail"] =
-                    email,
-                ["AuthBootstrap__AdminPassword"] =
-                    password
-            };
+        using var environment =
+            AuthTestEnvironmentScope.CreateDefault(
+                _database.ConnectionString,
+                ("AuthBootstrap__Enabled", "true"),
+                ("AuthBootstrap__AdminEmail", email),
+                ("AuthBootstrap__AdminPassword", password));
 
-        var originals =
-            variables.Keys.ToDictionary(
-                key => key,
-                Environment.GetEnvironmentVariable);
-
-        try
-        {
             await using (var resetContext =
                 _database.CreateAuthDbContext())
             {
@@ -83,25 +65,11 @@ public sealed class AuthBootstrapPostgreSqlTests
                     .ExecuteDeleteAsync();
             }
 
-            foreach (var variable in variables)
-            {
-                Environment.SetEnvironmentVariable(
-                    variable.Key,
-                    variable.Value);
-            }
-
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using var client =
-                factory.CreateClient(
-                    new WebApplicationFactoryClientOptions
-                    {
-                        AllowAutoRedirect = false
-                    });
+                AuthTestClientFactory.Create(factory);
 
             using var scope =
                 factory.Services.CreateScope();
@@ -151,47 +119,18 @@ public sealed class AuthBootstrapPostgreSqlTests
             Assert.Single(
                 admins,
                 x => x.IsActive);
-        }
-        finally
-        {
-            foreach (var original in originals)
-            {
-                Environment.SetEnvironmentVariable(
-                    original.Key,
-                    original.Value);
-            }
-        }
     }
 
     [Fact]
     public async Task Startup_WithBootstrapDisabled_CreatesRequiredRolesButNoUser()
     {
-        var variables =
-            new Dictionary<string, string?>
-            {
-                ["ConnectionStrings__DefaultConnection"] =
-                    _database.ConnectionString,
-                ["Jwt__Issuer"] =
-                    "AmazonRepricer.IntegrationTests",
-                ["Jwt__Audience"] =
-                    "AmazonRepricer.IntegrationTests",
-                ["Jwt__SigningKey"] =
-                    "integration-test-signing-key-32-bytes-minimum",
-                ["AuthBootstrap__Enabled"] =
-                    "false",
-                ["AuthBootstrap__AdminEmail"] =
-                    null,
-                ["AuthBootstrap__AdminPassword"] =
-                    null
-            };
+        using var environment =
+            AuthTestEnvironmentScope.CreateDefault(
+                _database.ConnectionString,
+                ("AuthBootstrap__Enabled", "false"),
+                ("AuthBootstrap__AdminEmail", null),
+                ("AuthBootstrap__AdminPassword", null));
 
-        var originals =
-            variables.Keys.ToDictionary(
-                key => key,
-                Environment.GetEnvironmentVariable);
-
-        try
-        {
             await using (var resetContext =
                 _database.CreateAuthDbContext())
             {
@@ -220,25 +159,11 @@ public sealed class AuthBootstrapPostgreSqlTests
                     .ExecuteDeleteAsync();
             }
 
-            foreach (var variable in variables)
-            {
-                Environment.SetEnvironmentVariable(
-                    variable.Key,
-                    variable.Value);
-            }
-
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using var client =
-                factory.CreateClient(
-                    new WebApplicationFactoryClientOptions
-                    {
-                        AllowAutoRedirect = false
-                    });
+                AuthTestClientFactory.Create(factory);
 
             using var scope =
                 factory.Services.CreateScope();
@@ -264,16 +189,7 @@ public sealed class AuthBootstrapPostgreSqlTests
             Assert.False(
                 await userManager.Users.AnyAsync());
         }
-        finally
-        {
-            foreach (var original in originals)
-            {
-                Environment.SetEnvironmentVariable(
-                    original.Key,
-                    original.Value);
-            }
-        }
-    }
+
     [Theory]
     [InlineData(null, "Initial-Admin-2026!")]
     [InlineData("initial-admin@example.test", null)]
@@ -283,55 +199,22 @@ public sealed class AuthBootstrapPostgreSqlTests
         string? email,
         string? password)
     {
-        var variables =
-            new Dictionary<string, string?>
-            {
-                ["ConnectionStrings__DefaultConnection"] =
-                    _database.ConnectionString,
-                ["Jwt__Issuer"] =
-                    "AmazonRepricer.IntegrationTests",
-                ["Jwt__Audience"] =
-                    "AmazonRepricer.IntegrationTests",
-                ["Jwt__SigningKey"] =
-                    "integration-test-signing-key-32-bytes-minimum",
-                ["AuthBootstrap__Enabled"] =
-                    "true",
-                ["AuthBootstrap__AdminEmail"] =
-                    email,
-                ["AuthBootstrap__AdminPassword"] =
-                    password
-            };
-
-        var originals =
-            variables.Keys.ToDictionary(
-                key => key,
-                Environment.GetEnvironmentVariable);
-
-        try
-        {
-            foreach (var variable in variables)
-            {
-                Environment.SetEnvironmentVariable(
-                    variable.Key,
-                    variable.Value);
-            }
+        using var environment =
+            AuthTestEnvironmentScope.CreateDefault(
+                _database.ConnectionString,
+                ("AuthBootstrap__Enabled", "true"),
+                ("AuthBootstrap__AdminEmail", email),
+                ("AuthBootstrap__AdminPassword", password));
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             var exception =
                 await Assert.ThrowsAnyAsync<Exception>(
                     async () =>
                     {
                         using var client =
-                            factory.CreateClient(
-                                new WebApplicationFactoryClientOptions
-                                {
-                                    AllowAutoRedirect = false
-                                });
+                            AuthTestClientFactory.Create(factory);
 
                         await client.GetAsync("/");
                     });
@@ -340,16 +223,6 @@ public sealed class AuthBootstrapPostgreSqlTests
                 "Auth bootstrap is enabled",
                 exception.ToString(),
                 StringComparison.Ordinal);
-        }
-        finally
-        {
-            foreach (var original in originals)
-            {
-                Environment.SetEnvironmentVariable(
-                    original.Key,
-                    original.Value);
-            }
-        }
     }
 
     [Fact]
@@ -370,32 +243,13 @@ public sealed class AuthBootstrapPostgreSqlTests
         var existingAdminId =
             Guid.NewGuid();
 
-        var variables =
-            new Dictionary<string, string?>
-            {
-                ["ConnectionStrings__DefaultConnection"] =
-                    _database.ConnectionString,
-                ["Jwt__Issuer"] =
-                    "AmazonRepricer.IntegrationTests",
-                ["Jwt__Audience"] =
-                    "AmazonRepricer.IntegrationTests",
-                ["Jwt__SigningKey"] =
-                    "integration-test-signing-key-32-bytes-minimum",
-                ["AuthBootstrap__Enabled"] =
-                    "true",
-                ["AuthBootstrap__AdminEmail"] =
-                    bootstrapEmail,
-                ["AuthBootstrap__AdminPassword"] =
-                    bootstrapPassword
-            };
+        using var environment =
+            AuthTestEnvironmentScope.CreateDefault(
+                _database.ConnectionString,
+                ("AuthBootstrap__Enabled", "true"),
+                ("AuthBootstrap__AdminEmail", bootstrapEmail),
+                ("AuthBootstrap__AdminPassword", bootstrapPassword));
 
-        var originals =
-            variables.Keys.ToDictionary(
-                key => key,
-                Environment.GetEnvironmentVariable);
-
-        try
-        {
             await using (var resetContext =
                 _database.CreateAuthDbContext())
             {
@@ -424,25 +278,11 @@ public sealed class AuthBootstrapPostgreSqlTests
                     .ExecuteDeleteAsync();
             }
 
-            foreach (var variable in variables)
-            {
-                Environment.SetEnvironmentVariable(
-                    variable.Key,
-                    variable.Value);
-            }
-
             using (var seedFactory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing")))
+                AuthTestFactory.Create())
             {
                 using var seedClient =
-                    seedFactory.CreateClient(
-                        new WebApplicationFactoryClientOptions
-                        {
-                            AllowAutoRedirect = false
-                        });
+                    AuthTestClientFactory.Create(seedFactory);
 
                 using var scope =
                     seedFactory.Services.CreateScope();
@@ -461,55 +301,20 @@ public sealed class AuthBootstrapPostgreSqlTests
                 await userManager.DeleteAsync(
                     bootstrapCreatedAdmin);
 
-                var replacementAdmin =
-                    new AppUser
-                    {
-                        Id = existingAdminId,
-                        UserName = existingEmail,
-                        Email = existingEmail,
-                        EmailConfirmed = true,
-                        IsActive = true
-                    };
-
-                var createResult =
-                    await userManager.CreateAsync(
-                        replacementAdmin,
-                        existingPassword);
-
-                Assert.True(
-                    createResult.Succeeded,
-                    string.Join(
-                        "; ",
-                        createResult.Errors.Select(
-                            x =>
-                                $"{x.Code}: {x.Description}")));
-
-                var roleResult =
-                    await userManager.AddToRoleAsync(
-                        replacementAdmin,
-                        AppRoles.Admin);
-
-                Assert.True(
-                    roleResult.Succeeded,
-                    string.Join(
-                        "; ",
-                        roleResult.Errors.Select(
-                            x =>
-                                $"{x.Code}: {x.Description}")));
+                await AuthTestData.CreateUserAsync(
+                    scope.ServiceProvider,
+                    existingEmail,
+                    existingPassword,
+                    AppRoles.Admin,
+                    isActive: true,
+                    userId: existingAdminId);
             }
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using var client =
-                factory.CreateClient(
-                    new WebApplicationFactoryClientOptions
-                    {
-                        AllowAutoRedirect = false
-                    });
+                AuthTestClientFactory.Create(factory);
 
             using var verificationScope =
                 factory.Services.CreateScope();
@@ -552,16 +357,6 @@ public sealed class AuthBootstrapPostgreSqlTests
             Assert.Equal(
                 existingAdminId,
                 admins.Single(x => x.IsActive).Id);
-        }
-        finally
-        {
-            foreach (var original in originals)
-            {
-                Environment.SetEnvironmentVariable(
-                    original.Key,
-                    original.Value);
-            }
-        }
     }
 
     [Fact]
@@ -573,32 +368,13 @@ public sealed class AuthBootstrapPostgreSqlTests
         const string password =
             "Concurrent-Initial-Admin-2026!";
 
-        var variables =
-            new Dictionary<string, string?>
-            {
-                ["ConnectionStrings__DefaultConnection"] =
-                    _database.ConnectionString,
-                ["Jwt__Issuer"] =
-                    "AmazonRepricer.IntegrationTests",
-                ["Jwt__Audience"] =
-                    "AmazonRepricer.IntegrationTests",
-                ["Jwt__SigningKey"] =
-                    "integration-test-signing-key-32-bytes-minimum",
-                ["AuthBootstrap__Enabled"] =
-                    "true",
-                ["AuthBootstrap__AdminEmail"] =
-                    email,
-                ["AuthBootstrap__AdminPassword"] =
-                    password
-            };
+        using var environment =
+            AuthTestEnvironmentScope.CreateDefault(
+                _database.ConnectionString,
+                ("AuthBootstrap__Enabled", "true"),
+                ("AuthBootstrap__AdminEmail", email),
+                ("AuthBootstrap__AdminPassword", password));
 
-        var originals =
-            variables.Keys.ToDictionary(
-                key => key,
-                Environment.GetEnvironmentVariable);
-
-        try
-        {
             await using (var resetContext =
                 _database.CreateAuthDbContext())
             {
@@ -627,42 +403,21 @@ public sealed class AuthBootstrapPostgreSqlTests
                     .ExecuteDeleteAsync();
             }
 
-            foreach (var variable in variables)
-            {
-                Environment.SetEnvironmentVariable(
-                    variable.Key,
-                    variable.Value);
-            }
-
             using var factory1 =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             using var factory2 =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             var task1 =
                 Task.Run(
                     () =>
-                        factory1.CreateClient(
-                            new WebApplicationFactoryClientOptions
-                            {
-                                AllowAutoRedirect = false
-                            }));
+                        AuthTestClientFactory.Create(factory1));
 
             var task2 =
                 Task.Run(
                     () =>
-                        factory2.CreateClient(
-                            new WebApplicationFactoryClientOptions
-                            {
-                                AllowAutoRedirect = false
-                            }));
+                        AuthTestClientFactory.Create(factory2));
 
             var clients =
                 await Task.WhenAll(
@@ -711,16 +466,6 @@ public sealed class AuthBootstrapPostgreSqlTests
 
             Assert.Single(
                 usersWithBootstrapEmail);
-        }
-        finally
-        {
-            foreach (var original in originals)
-            {
-                Environment.SetEnvironmentVariable(
-                    original.Key,
-                    original.Value);
-            }
-        }
     }
 
     [Fact]
@@ -738,33 +483,14 @@ public sealed class AuthBootstrapPostgreSqlTests
         const string bootstrapPassword =
             "Bootstrap-Admin-2026!";
 
-        var variables =
-            new Dictionary<string, string?>
-            {
-                ["ConnectionStrings__DefaultConnection"] =
-                    _database.ConnectionString,
-                ["Jwt__Issuer"] =
-                    "AmazonRepricer.IntegrationTests",
-                ["Jwt__Audience"] =
-                    "AmazonRepricer.IntegrationTests",
-                ["Jwt__SigningKey"] =
-                    "integration-test-signing-key-32-bytes-minimum",
-                ["Jwt__AccessTokenLifetimeMinutes"] =
-                    "15",
-                ["Jwt__RefreshTokenLifetimeDays"] =
-                    "30",
-                ["AuthBootstrap__Enabled"] =
-                    "false",
-                ["AuthBootstrap__AdminEmail"] =
-                    bootstrapEmail,
-                ["AuthBootstrap__AdminPassword"] =
-                    bootstrapPassword
-            };
-
-        var originals =
-            variables.Keys.ToDictionary(
-                key => key,
-                Environment.GetEnvironmentVariable);
+        using var environment =
+            AuthTestEnvironmentScope.CreateDefault(
+                _database.ConnectionString,
+                ("Jwt__AccessTokenLifetimeMinutes", "15"),
+                ("Jwt__RefreshTokenLifetimeDays", "30"),
+                ("AuthBootstrap__Enabled", "false"),
+                ("AuthBootstrap__AdminEmail", bootstrapEmail),
+                ("AuthBootstrap__AdminPassword", bootstrapPassword));
 
         try
         {
@@ -796,83 +522,33 @@ public sealed class AuthBootstrapPostgreSqlTests
                     .ExecuteDeleteAsync();
             }
 
-            foreach (var variable in variables)
-            {
-                Environment.SetEnvironmentVariable(
-                    variable.Key,
-                    variable.Value);
-            }
-
             using (var seedFactory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing")))
+                AuthTestFactory.Create())
             {
                 using var scope =
                     seedFactory.Services.CreateScope();
 
-                var userManager =
-                    scope.ServiceProvider
-                        .GetRequiredService<UserManager<AppUser>>();
-
-                var inactiveAdmin =
-                    new AppUser
-                    {
-                        Id = Guid.NewGuid(),
-                        UserName = inactiveEmail,
-                        Email = inactiveEmail,
-                        EmailConfirmed = true,
-                        IsActive = false
-                    };
-
-                var createResult =
-                    await userManager.CreateAsync(
-                        inactiveAdmin,
-                        inactivePassword);
-
-                Assert.True(
-                    createResult.Succeeded,
-                    string.Join(
-                        "; ",
-                        createResult.Errors.Select(
-                            x =>
-                                $"{x.Code}: {x.Description}")));
-
-                var roleResult =
-                    await userManager.AddToRoleAsync(
-                        inactiveAdmin,
-                        AppRoles.Admin);
-
-                Assert.True(
-                    roleResult.Succeeded,
-                    string.Join(
-                        "; ",
-                        roleResult.Errors.Select(
-                            x =>
-                                $"{x.Code}: {x.Description}")));
+                await AuthTestData.CreateUserAsync(
+                    scope.ServiceProvider,
+                    inactiveEmail,
+                    inactivePassword,
+                    AppRoles.Admin,
+                    isActive: false);
             }
 
-            Environment.SetEnvironmentVariable(
+            environment.Set(
                 "AuthBootstrap__Enabled",
                 "true");
 
             using var factory =
-                new WebApplicationFactory<Program>()
-                    .WithWebHostBuilder(
-                        builder =>
-                            builder.UseEnvironment("Testing"));
+                AuthTestFactory.Create();
 
             var exception =
                 await Assert.ThrowsAnyAsync<Exception>(
                     async () =>
                     {
                         using var client =
-                            factory.CreateClient(
-                                new WebApplicationFactoryClientOptions
-                                {
-                                    AllowAutoRedirect = false
-                                });
+                            AuthTestClientFactory.Create(factory);
 
                         await client.GetAsync("/");
                     });
@@ -919,12 +595,6 @@ public sealed class AuthBootstrapPostgreSqlTests
                     .ExecuteDeleteAsync();
             }
 
-            foreach (var original in originals)
-            {
-                Environment.SetEnvironmentVariable(
-                    original.Key,
-                    original.Value);
-            }
         }
     }
 
