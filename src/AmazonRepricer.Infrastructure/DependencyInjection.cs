@@ -65,8 +65,16 @@ public static class DependencyInjection
             IPriceUpdateSafetyGate,
             DbPriceUpdateSafetyGate>();
 
-        services.Configure<AmazonSpApiOptions>(
-            configuration.GetSection(AmazonSpApiOptions.SectionName));
+        services
+            .AddOptions<AmazonSpApiOptions>()
+            .Bind(
+                configuration.GetSection(
+                    AmazonSpApiOptions.SectionName))
+            .ValidateOnStart();
+
+        services.AddSingleton<
+            IValidateOptions<AmazonSpApiOptions>,
+            AmazonSpApiOptionsValidator>();
 
         services.AddHttpClient(
             "AmazonLwa",

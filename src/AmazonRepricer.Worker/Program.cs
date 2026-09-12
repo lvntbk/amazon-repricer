@@ -10,11 +10,16 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddInfrastructure(builder.Configuration);
 
-builder.Services.Configure<WorkerOptions>(
-    builder.Configuration.GetSection(WorkerOptions.SectionName));
+builder.Services
+    .AddOptions<WorkerOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            WorkerOptions.SectionName))
+    .ValidateOnStart();
 
-builder.Services.Configure<AmazonSpApiOptions>(
-    builder.Configuration.GetSection(AmazonSpApiOptions.SectionName));
+builder.Services.AddSingleton<
+    Microsoft.Extensions.Options.IValidateOptions<WorkerOptions>,
+    WorkerOptionsValidator>();
 
 builder.Services.AddScoped<IPricingEngine, PricingEngine>();
 
