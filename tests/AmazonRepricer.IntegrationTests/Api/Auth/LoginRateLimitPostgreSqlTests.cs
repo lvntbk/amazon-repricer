@@ -1,6 +1,8 @@
 using AmazonRepricer.IntegrationTests.Api.Auth.Infrastructure;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
 using AmazonRepricer.IntegrationTests.PostgreSql;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -118,4 +120,176 @@ try
 
         }
     }
+
+    [Fact]
+    public async Task Login_FromDifferentForwardedClientIpBehindTrustedProxy_UsesSeparateRateLimitPartition()
+    {
+        using var environment =
+            AuthTestEnvironmentScope.CreateDefault(
+                _database.ConnectionString,
+                ("ReverseProxy__Enabled", "true"),
+                ("ReverseProxy__KnownProxies__0", "127.0.0.1"));
+
+        using var factory =
+            AuthTestFactory.Create();
+
+        async Task<HttpStatusCode> SendLoginAsync(
+            string forwardedFor)
+        {
+            var payload =
+                JsonSerializer.Serialize(
+                    new
+                    {
+                        Email =
+                            "forwarded-rate-limit@example.test",
+                        Password =
+                            "Wrong-Horse-2026!"
+                    });
+
+            var payloadBytes =
+                Encoding.UTF8.GetBytes(payload);
+
+            using var body =
+                new MemoryStream(payloadBytes);
+
+            var context =
+                await factory.Server.SendAsync(
+                    httpContext =>
+                    {
+                        httpContext.Connection.RemoteIpAddress =
+                            IPAddress.Loopback;
+
+                        httpContext.Request.Scheme =
+                            "https";
+
+                        httpContext.Request.Method =
+                            "POST";
+
+                        httpContext.Request.Path =
+                            "/api/auth/login";
+
+                        httpContext.Request.Headers[
+                            "X-Forwarded-For"] =
+                            forwardedFor;
+
+                        httpContext.Request.ContentType =
+                            "application/json";
+
+                        httpContext.Request.ContentLength =
+                            payloadBytes.Length;
+
+                        httpContext.Request.Body =
+                            body;
+                    });
+
+            return (HttpStatusCode)
+                context.Response.StatusCode;
+        }
+
+        for (var attempt = 1; attempt <= 10; attempt++)
+        {
+            var statusCode =
+                await SendLoginAsync(
+                    "198.51.100.10");
+
+            Assert.Equal(
+                HttpStatusCode.Unauthorized,
+                statusCode);
+        }
+
+        var differentClientStatusCode =
+            await SendLoginAsync(
+                "203.0.113.20");
+
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            differentClientStatusCode);
+    }
+
+
+    [Fact]
+    public async Task Login_FromUntrustedProxy_IgnoresForwardedClientIpForRateLimitPartition()
+    {
+        using var environment =
+            AuthTestEnvironmentScope.CreateDefault(
+                _database.ConnectionString,
+                ("ReverseProxy__Enabled", "true"),
+                ("ReverseProxy__KnownProxies__0", "127.0.0.1"));
+
+        using var factory =
+            AuthTestFactory.Create();
+
+        async Task<HttpStatusCode> SendLoginAsync(
+            string forwardedFor)
+        {
+            var payload =
+                JsonSerializer.Serialize(
+                    new
+                    {
+                        Email =
+                            "untrusted-forwarded@example.test",
+                        Password =
+                            "Wrong-Horse-2026!"
+                    });
+
+            var payloadBytes =
+                Encoding.UTF8.GetBytes(payload);
+
+            using var body =
+                new MemoryStream(payloadBytes);
+
+            var context =
+                await factory.Server.SendAsync(
+                    httpContext =>
+                    {
+                        httpContext.Connection.RemoteIpAddress =
+                            IPAddress.Parse("10.20.30.40");
+
+                        httpContext.Request.Scheme =
+                            "https";
+
+                        httpContext.Request.Method =
+                            "POST";
+
+                        httpContext.Request.Path =
+                            "/api/auth/login";
+
+                        httpContext.Request.Headers[
+                            "X-Forwarded-For"] =
+                            forwardedFor;
+
+                        httpContext.Request.ContentType =
+                            "application/json";
+
+                        httpContext.Request.ContentLength =
+                            payloadBytes.Length;
+
+                        httpContext.Request.Body =
+                            body;
+                    });
+
+            return (HttpStatusCode)
+                context.Response.StatusCode;
+        }
+
+        for (var attempt = 1; attempt <= 10; attempt++)
+        {
+            var statusCode =
+                await SendLoginAsync(
+                    "198.51.100.10");
+
+            Assert.Equal(
+                HttpStatusCode.Unauthorized,
+                statusCode);
+        }
+
+        var spoofedClientStatusCode =
+            await SendLoginAsync(
+                "203.0.113.20");
+
+        Assert.Equal(
+            HttpStatusCode.TooManyRequests,
+            spoofedClientStatusCode);
+    }
+
 }

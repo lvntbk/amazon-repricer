@@ -1,4 +1,5 @@
 using AmazonRepricer.Api.Health;
+using AmazonRepricer.Api.ReverseProxy;
 using AmazonRepricer.Application.Auth;
 using AmazonRepricer.Api.Auth;
 using AmazonRepricer.Application.Pricing;
@@ -8,12 +9,65 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using System.Globalization;
+using System.Net;
+using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.HttpOverrides;
 using System.Text;
 using System.Threading.RateLimiting;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IPricingEngine, PricingEngine>();
+
+builder.Services
+    .AddOptions<ReverseProxyOptions>()
+    .Bind(
+        builder.Configuration.GetSection(
+            ReverseProxyOptions.SectionName))
+    .Validate(
+        options =>
+            !options.Enabled ||
+            options.KnownProxies.Count > 0,
+        "At least one trusted proxy is required when reverse proxy support is enabled.")
+    .Validate(
+        options =>
+            options.KnownProxies.All(
+                proxy =>
+                    IPAddress.TryParse(
+                        proxy,
+                        out _)),
+        "All trusted proxies must be valid IP addresses.")
+    .ValidateOnStart();
+
+builder.Services
+    .AddOptions<ForwardedHeadersOptions>()
+    .Configure<IOptions<ReverseProxyOptions>>(
+        (options, reverseProxyAccessor) =>
+        {
+            var reverseProxy =
+                reverseProxyAccessor.Value;
+
+            if (!reverseProxy.Enabled)
+            {
+                return;
+            }
+
+            options.ForwardedHeaders =
+                ForwardedHeaders.XForwardedFor |
+                ForwardedHeaders.XForwardedProto;
+
+            options.ForwardLimit = 1;
+
+            options.KnownNetworks.Clear();
+            options.KnownProxies.Clear();
+
+            foreach (var proxy in
+                     reverseProxy.KnownProxies)
+            {
+                options.KnownProxies.Add(
+                    IPAddress.Parse(proxy));
+            }
+        });
 
 builder.Services
     .AddOptions<JwtOptions>()
@@ -193,6 +247,12 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
+var reverseProxyOptions =
+    app.Services
+        .GetRequiredService<
+            IOptions<ReverseProxyOptions>>()
+        .Value;
+
 _ = app.Services
     .GetRequiredService<
         Microsoft.Extensions.Options.IOptions<JwtOptions>>()
@@ -214,6 +274,11 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+}
+
+if (reverseProxyOptions.Enabled)
+{
+    app.UseForwardedHeaders();
 }
 
 app.UseHttpsRedirection();
