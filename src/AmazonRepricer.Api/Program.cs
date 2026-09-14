@@ -1,3 +1,4 @@
+using AmazonRepricer.Api.Health;
 using AmazonRepricer.Application.Auth;
 using AmazonRepricer.Api.Auth;
 using AmazonRepricer.Application.Pricing;
@@ -179,6 +180,12 @@ builder.Services.AddRateLimiter(options =>
                     }));
 });
 
+builder.Services
+    .AddHealthChecks()
+    .AddCheck<PostgreSqlReadinessHealthCheck>(
+        "postgresql",
+        tags: ["ready"]);
+
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
@@ -216,6 +223,24 @@ app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.MapHealthChecks(
+        "/health/live",
+        new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+        {
+            Predicate = _ => false
+        })
+    .AllowAnonymous();
+
+app.MapHealthChecks(
+        "/health/ready",
+        new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+        {
+            Predicate =
+                registration =>
+                    registration.Tags.Contains("ready")
+        })
+    .AllowAnonymous();
 
 app.MapControllers();
 
