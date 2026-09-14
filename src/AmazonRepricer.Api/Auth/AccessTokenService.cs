@@ -23,12 +23,25 @@ public sealed class AccessTokenService : IAccessTokenService
         DateTimeOffset issuedAtUtc,
         DateTimeOffset expiresAtUtc)
     {
+        var securityStamp =
+            user.SecurityStamp;
+
+        if (string.IsNullOrWhiteSpace(
+                securityStamp))
+        {
+            throw new InvalidOperationException(
+                "User security stamp is required to issue an access token.");
+        }
+
         var claims =
             new List<Claim>
             {
                 new(
                     ClaimTypes.NameIdentifier,
                     user.Id.ToString()),
+                new(
+                    AppJwtClaimTypes.SecurityStamp,
+                    securityStamp),
                 new(
                     JwtRegisteredClaimNames.Jti,
                     Guid.NewGuid().ToString("N"))

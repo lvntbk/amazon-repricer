@@ -74,7 +74,8 @@ public sealed class AccessTokenServicePostgreSqlTests
                     Id = Guid.NewGuid(),
                     Email = "token-user@example.test",
                     UserName = "token-user@example.test",
-                    IsActive = true
+                    IsActive = true,
+                    SecurityStamp = "test-security-stamp"
                 };
 
             var issuedAtUtc =
@@ -124,6 +125,14 @@ public sealed class AccessTokenServicePostgreSqlTests
                 claim =>
                     claim.Type == ClaimTypes.Email &&
                     claim.Value == user.Email);
+
+            Assert.Contains(
+                token.Claims,
+                claim =>
+                    claim.Type ==
+                        AppJwtClaimTypes.SecurityStamp &&
+                    claim.Value ==
+                        user.SecurityStamp);
 
             Assert.Contains(
                 token.Claims,

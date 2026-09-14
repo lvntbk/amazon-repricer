@@ -232,6 +232,22 @@ public sealed class AdminUsersController : ControllerBase
                         "User deactivation failed.");
             }
 
+            var securityStampResult =
+                await _userManager
+                    .UpdateSecurityStampAsync(
+                        user);
+
+            if (!securityStampResult.Succeeded)
+            {
+                await transaction.RollbackAsync(
+                    cancellationToken);
+
+                return Problem(
+                    statusCode:
+                        StatusCodes.Status500InternalServerError,
+                    detail:
+                        "User security state could not be updated.");
+            }
         }
 
         var now =
@@ -430,6 +446,23 @@ public sealed class AdminUsersController : ControllerBase
                     StatusCodes.Status500InternalServerError,
                 detail:
                     "User role assignment failed.");
+        }
+
+        var securityStampResult =
+            await _userManager
+                .UpdateSecurityStampAsync(
+                    user);
+
+        if (!securityStampResult.Succeeded)
+        {
+            await transaction.RollbackAsync(
+                cancellationToken);
+
+            return Problem(
+                statusCode:
+                    StatusCodes.Status500InternalServerError,
+                detail:
+                    "User security state could not be updated.");
         }
 
         var now =

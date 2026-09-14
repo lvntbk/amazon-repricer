@@ -19,6 +19,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IPricingEngine, PricingEngine>();
 
+builder.Services.AddScoped<
+    IAccessTokenStateValidator,
+    AccessTokenStateValidator>();
+
 builder.Services
     .AddOptions<ReverseProxyOptions>()
     .Bind(
@@ -138,6 +142,40 @@ builder.Services
                                 jwtOptions.SigningKey)),
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.Zero
+                };
+
+            options.Events =
+                new JwtBearerEvents
+                {
+                    OnTokenValidated =
+                        async context =>
+                        {
+                            if (context.Principal is null)
+                            {
+                                context.Fail(
+                                    "Access token principal is missing.");
+
+                                return;
+                            }
+
+                            var validator =
+                                context.HttpContext
+                                    .RequestServices
+                                    .GetRequiredService<
+                                        IAccessTokenStateValidator>();
+
+                            var isValid =
+                                await validator.IsValidAsync(
+                                    context.Principal,
+                                    context.HttpContext
+                                        .RequestAborted);
+
+                            if (!isValid)
+                            {
+                                context.Fail(
+                                    "Access token security state is invalid.");
+                            }
+                        }
                 };
         });
 
