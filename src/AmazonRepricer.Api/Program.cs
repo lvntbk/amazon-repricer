@@ -1,3 +1,5 @@
+using OpenTelemetry.Resources;
+using OpenTelemetry.Metrics;
 using AmazonRepricer.Api.Health;
 using AmazonRepricer.Api.Observability;
 using AmazonRepricer.Api.ReverseProxy;
@@ -25,6 +27,42 @@ builder.Logging.AddJsonConsole(
         options.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
         options.UseUtcTimestamp = true;
     });
+
+var apiOtlpEndpoint =
+    builder.Configuration["OpenTelemetry:OtlpEndpoint"];
+
+builder.Services
+    .AddOpenTelemetry()
+    .ConfigureResource(
+        resource =>
+            resource.AddService(
+                "amazon-repricer-api"))
+    .WithMetrics(
+        metrics =>
+        {
+            metrics
+                .AddAspNetCoreInstrumentation()
+                .AddHttpClientInstrumentation()
+                .AddRuntimeInstrumentation();
+
+            if (!string.IsNullOrWhiteSpace(
+                    apiOtlpEndpoint))
+            {
+                if (!Uri.TryCreate(
+                        apiOtlpEndpoint,
+                        UriKind.Absolute,
+                        out var endpoint))
+                {
+                    throw new InvalidOperationException(
+                        "OpenTelemetry:OtlpEndpoint must be a valid absolute URI.");
+                }
+
+                metrics.AddOtlpExporter(
+                    options =>
+                        options.Endpoint =
+                            endpoint);
+            }
+        });
 
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IPricingEngine, PricingEngine>();

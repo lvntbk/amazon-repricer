@@ -1,3 +1,4 @@
+using AmazonRepricer.Worker.Observability;
 using AmazonRepricer.Application.Amazon;
 using AmazonRepricer.Application.Pricing;
 using AmazonRepricer.Domain.Entities;
@@ -14,6 +15,7 @@ public sealed class ProductRepricingProcessor
     private readonly IPricingEngine _pricingEngine;
     private readonly IAmazonPricingProvider _amazonPricingProvider;
     private readonly IAutomaticRepricingExecutor _automaticRepricingExecutor;
+    private readonly RepricingMetrics _metrics;
     private readonly ILogger<ProductRepricingProcessor> _logger;
     private readonly WorkerOptions _options;
 
@@ -22,6 +24,7 @@ public sealed class ProductRepricingProcessor
         IPricingEngine pricingEngine,
         IAmazonPricingProvider amazonPricingProvider,
         IAutomaticRepricingExecutor automaticRepricingExecutor,
+        RepricingMetrics metrics,
         ILogger<ProductRepricingProcessor> logger,
         IOptions<WorkerOptions> options)
     {
@@ -29,6 +32,7 @@ public sealed class ProductRepricingProcessor
         _pricingEngine = pricingEngine;
         _amazonPricingProvider = amazonPricingProvider;
         _automaticRepricingExecutor = automaticRepricingExecutor;
+        _metrics = metrics;
         _logger = logger;
         _options = options.Value;
     }
@@ -164,6 +168,13 @@ public sealed class ProductRepricingProcessor
                 product,
                 repricingEvent,
                 cancellationToken);
+
+        _metrics.RecordExecution(
+            executionResult.WasApplied
+                ? "applied"
+                : executionResult.WasAttempted
+                    ? "failed"
+                    : "skipped");
 
         // DryRun and blocked executions are not persisted by the executor.
         await _dbContext.SaveChangesAsync(cancellationToken);

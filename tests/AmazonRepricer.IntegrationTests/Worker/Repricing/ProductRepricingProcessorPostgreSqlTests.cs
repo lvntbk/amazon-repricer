@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using AmazonRepricer.Application.Amazon;
 using AmazonRepricer.Application.Pricing;
 using AmazonRepricer.Domain.Entities;
@@ -5,6 +6,7 @@ using AmazonRepricer.Domain.Enums;
 using AmazonRepricer.Infrastructure.Pricing;
 using AmazonRepricer.IntegrationTests.PostgreSql;
 using AmazonRepricer.Worker;
+using AmazonRepricer.Worker.Observability;
 using AmazonRepricer.Worker.Repricing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -34,6 +36,41 @@ public sealed class ProductRepricingProcessorPostgreSqlTests
 
         var applicationClaimObserved = false;
         var snapshotObservedBeforeSubmission = false;
+        var executionOutcomes =
+            new List<string>();
+
+        using var meterListener =
+            new MeterListener
+            {
+                InstrumentPublished =
+                    (instrument, listener) =>
+                    {
+                        if (instrument.Meter.Name ==
+                                RepricingMetrics.MeterName &&
+                            instrument.Name ==
+                                "amazon_repricer.repricing.executions")
+                        {
+                            listener.EnableMeasurementEvents(
+                                instrument);
+                        }
+                    }
+            };
+
+        meterListener.SetMeasurementEventCallback<long>(
+            (_, _, tags, _) =>
+            {
+                foreach (var tag in tags)
+                {
+                    if (tag.Key == "outcome" &&
+                        tag.Value is not null)
+                    {
+                        executionOutcomes.Add(
+                            tag.Value.ToString()!);
+                    }
+                }
+            });
+
+        meterListener.Start();
 
         var priceUpdater = new RecordingAmazonPriceUpdater(
             async () =>
@@ -82,6 +119,7 @@ public sealed class ProductRepricingProcessorPostgreSqlTests
                 new PricingEngine(),
                 pricingProvider,
                 executor,
+                new RepricingMetrics(),
                 NullLogger<ProductRepricingProcessor>.Instance,
                 options);
 
@@ -127,6 +165,10 @@ public sealed class ProductRepricingProcessorPostgreSqlTests
         Assert.NotNull(repricingEvent.ProcessedAtUtc);
         Assert.Null(repricingEvent.ApplicationError);
         Assert.Equal(98.90m, product.CurrentPrice);
+
+        Assert.Contains(
+            "applied",
+            executionOutcomes);
     }
 
     [Fact]
@@ -169,6 +211,7 @@ public sealed class ProductRepricingProcessorPostgreSqlTests
                 new PricingEngine(),
                 pricingProvider,
                 executor,
+                new RepricingMetrics(),
                 NullLogger<ProductRepricingProcessor>.Instance,
                 options);
 

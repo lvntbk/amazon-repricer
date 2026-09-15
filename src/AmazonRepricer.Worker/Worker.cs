@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using AmazonRepricer.Worker.Observability;
 using AmazonRepricer.Infrastructure.Persistence;
 using AmazonRepricer.Worker.Repricing;
 using Microsoft.EntityFrameworkCore;
@@ -9,15 +11,18 @@ public sealed class Worker : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<Worker> _logger;
+    private readonly RepricingMetrics _metrics;
     private readonly WorkerOptions _options;
 
     public Worker(
         IServiceScopeFactory scopeFactory,
         ILogger<Worker> logger,
+        RepricingMetrics metrics,
         IOptions<WorkerOptions> options)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _metrics = metrics;
         _options = options.Value;
 
         if (_options.IntervalSeconds <= 0)
@@ -40,9 +45,17 @@ public sealed class Worker : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            var cycleStartedAt =
+                Stopwatch.GetTimestamp();
+
             try
             {
                 await ProcessProductsAsync(stoppingToken);
+
+                _metrics.RecordCycle(
+                    "success",
+                    Stopwatch.GetElapsedTime(
+                        cycleStartedAt).TotalMilliseconds);
             }
             catch (OperationCanceledException)
                 when (stoppingToken.IsCancellationRequested)
@@ -51,6 +64,11 @@ public sealed class Worker : BackgroundService
             }
             catch (Exception exception)
             {
+                _metrics.RecordCycle(
+                    "failure",
+                    Stopwatch.GetElapsedTime(
+                        cycleStartedAt).TotalMilliseconds);
+
                 _logger.LogError(
                     exception,
                     "Unexpected error during repricing cycle.");

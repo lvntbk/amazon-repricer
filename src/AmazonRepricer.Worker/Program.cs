@@ -1,3 +1,6 @@
+using AmazonRepricer.Worker.Observability;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Metrics;
 using AmazonRepricer.Worker.Repricing;
 using AmazonRepricer.Infrastructure.Amazon;
 using AmazonRepricer.Application.Amazon;
@@ -17,7 +20,44 @@ builder.Logging.AddJsonConsole(
         options.UseUtcTimestamp = true;
     });
 
+var workerOtlpEndpoint =
+    builder.Configuration["OpenTelemetry:OtlpEndpoint"];
+
+builder.Services
+    .AddOpenTelemetry()
+    .ConfigureResource(
+        resource =>
+            resource.AddService(
+                "amazon-repricer-worker"))
+    .WithMetrics(
+        metrics =>
+        {
+            metrics
+                .AddHttpClientInstrumentation()
+                .AddRuntimeInstrumentation()
+                .AddMeter(RepricingMetrics.MeterName);
+
+            if (!string.IsNullOrWhiteSpace(
+                    workerOtlpEndpoint))
+            {
+                if (!Uri.TryCreate(
+                        workerOtlpEndpoint,
+                        UriKind.Absolute,
+                        out var endpoint))
+                {
+                    throw new InvalidOperationException(
+                        "OpenTelemetry:OtlpEndpoint must be a valid absolute URI.");
+                }
+
+                metrics.AddOtlpExporter(
+                    options =>
+                        options.Endpoint =
+                            endpoint);
+            }
+        });
+
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddSingleton<RepricingMetrics>();
 
 builder.Services
     .AddOptions<WorkerOptions>()
