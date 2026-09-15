@@ -485,3 +485,5 @@ $RECYCLE.BIN/
 
 # Local environment secrets
 .env
+
+backups/

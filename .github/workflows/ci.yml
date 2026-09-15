@@ -81,3 +81,80 @@ jobs:
           --source=/repo
           --redact
           --verbose
+
+  backup-restore:
+    name: PostgreSQL backup and restore verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      POSTGRES_DB: amazon_repricer_ci
+      POSTGRES_USER: repricer_ci
+      POSTGRES_PASSWORD: ci-local-password
+      POSTGRES_PORT: "55432"
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=127.0.0.1;Port=55432;Database=amazon_repricer_ci;Username=repricer_ci;Password=ci-local-password
+      Jwt__Issuer: amazon-repricer-ci
+      Jwt__Audience: amazon-repricer-ci
+      Jwt__SigningKey: ci-only-signing-key-012345678901234567890123456789
+      Jwt__AccessTokenLifetimeMinutes: "15"
+      Jwt__RefreshTokenLifetimeDays: "30"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore AmazonRepricer.sln
+
+      - name: Install EF Core CLI
+        run: |
+          dotnet tool install --global dotnet-ef --version 8.0.11
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Start PostgreSQL
+        run: docker compose up -d postgres
+
+      - name: Wait for PostgreSQL
+        shell: bash
+        run: |
+          for attempt in {1..30}; do
+            if docker compose exec -T postgres \
+              pg_isready \
+              -U "$POSTGRES_USER" \
+              -d "$POSTGRES_DB"
+            then
+              exit 0
+            fi
+
+            sleep 1
+          done
+
+          docker compose logs postgres
+          exit 1
+
+      - name: Apply application migrations
+        run: >-
+          dotnet ef database update
+          --context RepricerDbContext
+          --project src/AmazonRepricer.Infrastructure
+          --startup-project src/AmazonRepricer.Api
+
+      - name: Apply authentication migrations
+        run: >-
+          dotnet ef database update
+          --context AuthDbContext
+          --project src/AmazonRepricer.Infrastructure
+          --startup-project src/AmazonRepricer.Api
+
+      - name: Verify backup and restore
+        run: ./scripts/postgres/backup-and-verify.sh
+
+      - name: Clean up PostgreSQL
+        if: always()
+        run: docker compose down -v

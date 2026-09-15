@@ -17,5 +17,28 @@ services:
       timeout: 5s
       retries: 5
 
+
+  postgres-backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB}
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+    volumes:
+      - ./backups/postgres:/backups
+      - ./scripts/postgres/container-backup.sh:/usr/local/bin/container-backup.sh:ro
+    command:
+      - /bin/sh
+      - /usr/local/bin/container-backup.sh
+
 volumes:
   amazon_repricer_postgres_data:
