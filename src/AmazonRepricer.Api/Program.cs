@@ -1,4 +1,5 @@
 using AmazonRepricer.Api.Health;
+using AmazonRepricer.Api.Observability;
 using AmazonRepricer.Api.ReverseProxy;
 using AmazonRepricer.Application.Auth;
 using AmazonRepricer.Api.Auth;
@@ -15,6 +16,15 @@ using Microsoft.AspNetCore.HttpOverrides;
 using System.Text;
 using System.Threading.RateLimiting;
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.ClearProviders();
+builder.Logging.AddJsonConsole(
+    options =>
+    {
+        options.IncludeScopes = true;
+        options.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
+        options.UseUtcTimestamp = true;
+    });
 
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IPricingEngine, PricingEngine>();
@@ -318,6 +328,9 @@ if (reverseProxyOptions.Enabled)
 {
     app.UseForwardedHeaders();
 }
+
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<RequestLoggingMiddleware>();
 
 app.UseHttpsRedirection();
 

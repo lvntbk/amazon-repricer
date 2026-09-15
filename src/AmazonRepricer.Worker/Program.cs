@@ -8,6 +8,15 @@ using AmazonRepricer.Worker.Amazon;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+builder.Logging.ClearProviders();
+builder.Logging.AddJsonConsole(
+    options =>
+    {
+        options.IncludeScopes = true;
+        options.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
+        options.UseUtcTimestamp = true;
+    });
+
 builder.Services.AddInfrastructure(builder.Configuration);
 
 builder.Services
