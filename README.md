@@ -1,11 +1,11 @@
 # Amazon Repricer
 
-[![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
+[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 [![CI](https://github.com/lvntbk/amazon-repricer/actions/workflows/ci.yml/badge.svg)](https://github.com/lvntbk/amazon-repricer/actions/workflows/ci.yml)
 
-Production-oriented Amazon repricing backend built with **.NET 8, ASP.NET Core, PostgreSQL, EF Core and background workers**.
+Production-oriented Amazon repricing backend built with **.NET 10, ASP.NET Core, PostgreSQL, EF Core and background workers**.
 
 The project focuses on safe repricing execution, concurrency control, authentication, observability and operational recovery.
 
@@ -152,7 +152,7 @@ A release should use a commit whose exact SHA has a successful CI run.
 
 | Area | Technology |
 |---|---|
-| Runtime | .NET 8 |
+| Runtime | .NET 10 |
 | API | ASP.NET Core Web API |
 | Background processing | .NET Worker Service |
 | Persistence | Entity Framework Core |
