@@ -110,7 +110,7 @@ builder.Services
 
             options.ForwardLimit = 1;
 
-            options.KnownNetworks.Clear();
+            options.KnownIPNetworks.Clear();
             options.KnownProxies.Clear();
 
             foreach (var proxy in
