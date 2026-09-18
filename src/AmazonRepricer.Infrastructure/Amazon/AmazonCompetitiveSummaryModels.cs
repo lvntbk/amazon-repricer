@@ -36,6 +36,45 @@ internal sealed class CompetitiveSummaryBody
 
     [JsonPropertyName("featuredBuyingOptions")]
     public List<FeaturedBuyingOption> FeaturedBuyingOptions { get; set; } = [];
+
+    [JsonPropertyName("lowestPricedOffers")]
+    public List<LowestPricedOffersGroup> LowestPricedOffers { get; set; } = [];
+}
+
+internal sealed class LowestPricedOffersGroup
+{
+    [JsonPropertyName("lowestPricedOffersInput")]
+    public LowestPricedOffersInput Input { get; set; } = new();
+
+    [JsonPropertyName("offers")]
+    public List<LowestPricedOffer> Offers { get; set; } = [];
+}
+
+internal sealed class LowestPricedOffersInput
+{
+    [JsonPropertyName("itemCondition")]
+    public string ItemCondition { get; set; } = string.Empty;
+
+    [JsonPropertyName("offerType")]
+    public string OfferType { get; set; } = string.Empty;
+}
+
+internal sealed class LowestPricedOffer
+{
+    [JsonPropertyName("sellerId")]
+    public string SellerId { get; set; } = string.Empty;
+
+    [JsonPropertyName("condition")]
+    public string Condition { get; set; } = string.Empty;
+
+    [JsonPropertyName("fulfillmentType")]
+    public string FulfillmentType { get; set; } = string.Empty;
+
+    [JsonPropertyName("listingPrice")]
+    public AmazonMoney ListingPrice { get; set; } = new();
+
+    [JsonPropertyName("shippingOptions")]
+    public List<AmazonShippingOption> ShippingOptions { get; set; } = [];
 }
 
 internal sealed class FeaturedBuyingOption
