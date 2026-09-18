@@ -53,7 +53,8 @@ public sealed class AmazonSpApiPricingProvider : IAmazonPricingProvider
                     marketplaceId = _options.MarketplaceId,
                     includedData = new[]
                     {
-                        "featuredBuyingOptions"
+                        "featuredBuyingOptions",
+                        "lowestPricedOffers"
                     },
                     uri =
                         "/products/pricing/2022-05-01/items/competitiveSummary",
@@ -104,6 +105,47 @@ public sealed class AmazonSpApiPricingProvider : IAmazonPricingProvider
                 $"{item.Status.StatusCode}: {item.Status.ReasonPhrase}");
         }
 
+        var competitiveOffers = item.Body.LowestPricedOffers
+            .Where(x =>
+                string.Equals(
+                    x.Input.ItemCondition,
+                    "New",
+                    StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(
+                    x.Input.OfferType,
+                    "Consumer",
+                    StringComparison.OrdinalIgnoreCase))
+            .SelectMany(x => x.Offers)
+            .Where(x => string.Equals(
+                x.Condition,
+                "New",
+                StringComparison.OrdinalIgnoreCase))
+            .Select(x =>
+            {
+                var shippingPrice = x.ShippingOptions
+                    .Where(y => string.Equals(
+                        y.ShippingOptionType,
+                        "DEFAULT",
+                        StringComparison.OrdinalIgnoreCase))
+                    .Select(y => y.Price.Amount)
+                    .FirstOrDefault();
+
+                return new AmazonCompetitiveOffer(
+                    SellerId: x.SellerId,
+                    Condition: x.Condition,
+                    FulfillmentType: x.FulfillmentType,
+                    ListingPrice: x.ListingPrice.Amount,
+                    ShippingPrice: shippingPrice,
+                    LandedPrice: x.ListingPrice.Amount + shippingPrice,
+                    CurrencyCode: x.ListingPrice.CurrencyCode,
+                    IsOurs: string.Equals(
+                        x.SellerId,
+                        _options.SellerId,
+                        StringComparison.Ordinal));
+            })
+            .OrderBy(x => x.LandedPrice)
+            .ToArray();
+
         var featuredOffer = item.Body.FeaturedBuyingOptions
             .Where(x => string.Equals(
                 x.BuyingOptionType,
@@ -127,7 +169,10 @@ public sealed class AmazonSpApiPricingProvider : IAmazonPricingProvider
         {
             return new AmazonPricingInfo(
                 FeaturedOfferPrice: null,
-                IsFeaturedOfferOurs: false);
+                IsFeaturedOfferOurs: false)
+            {
+                CompetitiveOffers = competitiveOffers
+            };
         }
 
         var isOurs = string.Equals(
@@ -144,7 +189,10 @@ public sealed class AmazonSpApiPricingProvider : IAmazonPricingProvider
 
         return new AmazonPricingInfo(
             featuredOffer.LandedPrice,
-            isOurs);
+            isOurs)
+        {
+            CompetitiveOffers = competitiveOffers
+        };
     }
 
     private void ValidateConfiguration()

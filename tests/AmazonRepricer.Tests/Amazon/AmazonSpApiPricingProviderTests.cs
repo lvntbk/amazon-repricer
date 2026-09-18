@@ -39,6 +39,39 @@ public sealed class AmazonSpApiPricingProviderTests
         Assert.Contains(
             "\"featuredBuyingOptions\"",
             handler.RequestBody);
+
+        Assert.Contains(
+            "\"lowestPricedOffers\"",
+            handler.RequestBody);
+
+        Assert.Equal(3, result.CompetitiveOffers.Count);
+
+        var first = result.CompetitiveOffers[0];
+        Assert.Equal("COMPETITOR-FBM", first.SellerId);
+        Assert.Equal("MFN", first.FulfillmentType);
+        Assert.Equal(485m, first.ListingPrice);
+        Assert.Equal(25m, first.ShippingPrice);
+        Assert.Equal(510m, first.LandedPrice);
+        Assert.False(first.IsOurs);
+
+        var second = result.CompetitiveOffers[1];
+        Assert.Equal("COMPETITOR-LOWEST", second.SellerId);
+        Assert.Equal("AFN", second.FulfillmentType);
+        Assert.Equal(514m, second.LandedPrice);
+        Assert.False(second.IsOurs);
+
+        var ours = result.CompetitiveOffers[2];
+        Assert.Equal("LOCAL-SELLER-001", ours.SellerId);
+        Assert.Equal("AFN", ours.FulfillmentType);
+        Assert.Equal(515m, ours.LandedPrice);
+        Assert.True(ours.IsOurs);
+
+        Assert.DoesNotContain(
+            result.CompetitiveOffers,
+            x => string.Equals(
+                x.Condition,
+                "Used",
+                StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -156,6 +189,85 @@ public sealed class AmazonSpApiPricingProviderTests
                             }
                           }
                         ]
+                      }
+                    ]
+                  }
+                ],
+                "lowestPricedOffers": [
+                  {
+                    "lowestPricedOffersInput": {"itemCondition": "New", "offerType": "Consumer"},
+                    "offers": [
+                      {
+                        "condition": "New",
+                        "sellerId": "COMPETITOR-LOWEST",
+                        "fulfillmentType": "AFN",
+                        "listingPrice": {
+                          "amount": 499.00,
+                          "currencyCode": "TRY"
+                        },
+                        "shippingOptions": [
+                          {
+                            "shippingOptionType": "DEFAULT",
+                            "price": {
+                              "amount": 15.00,
+                              "currencyCode": "TRY"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "condition": "New",
+                        "sellerId": "COMPETITOR-FBM",
+                        "fulfillmentType": "MFN",
+                        "listingPrice": {
+                          "amount": 485.00,
+                          "currencyCode": "TRY"
+                        },
+                        "shippingOptions": [
+                          {
+                            "shippingOptionType": "DEFAULT",
+                            "price": {
+                              "amount": 25.00,
+                              "currencyCode": "TRY"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "condition": "New",
+                        "sellerId": "LOCAL-SELLER-001",
+                        "fulfillmentType": "AFN",
+                        "listingPrice": {
+                          "amount": 515.00,
+                          "currencyCode": "TRY"
+                        },
+                        "shippingOptions": [
+                          {
+                            "shippingOptionType": "DEFAULT",
+                            "price": {
+                              "amount": 0.00,
+                              "currencyCode": "TRY"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "lowestPricedOffersInput": {
+                      "itemCondition": "Used",
+                      "offerType": "Consumer"
+                    },
+                    "offers": [
+                      {
+                        "condition": "Used",
+                        "sellerId": "USED-SELLER",
+                        "fulfillmentType": "AFN",
+                        "listingPrice": {
+                          "amount": 300.00,
+                          "currencyCode": "TRY"
+                        },
+                        "shippingOptions": []
                       }
                     ]
                   }
