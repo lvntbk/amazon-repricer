@@ -14,15 +14,27 @@ public sealed class RepricingVerificationService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<RepricingVerificationService> _logger;
     private readonly AmazonSpApiOptions _amazonOptions;
+    private readonly WorkerOptions _workerOptions;
 
     public RepricingVerificationService(
         IServiceScopeFactory scopeFactory,
         ILogger<RepricingVerificationService> logger,
-        IOptions<AmazonSpApiOptions> amazonOptions)
+        IOptions<AmazonSpApiOptions> amazonOptions,
+        IOptions<WorkerOptions> workerOptions)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
         _amazonOptions = amazonOptions.Value;
+        _workerOptions = workerOptions.Value;
+
+        var validation = new WorkerOptionsValidator()
+            .Validate(null, _workerOptions);
+
+        if (validation.Failed)
+        {
+            throw new InvalidOperationException(
+                string.Join("; ", validation.Failures));
+        }
     }
 
     public async Task<int> VerifyAsync(
@@ -43,13 +55,42 @@ public sealed class RepricingVerificationService
             var db = scope.ServiceProvider
                 .GetRequiredService<RepricerDbContext>();
 
-            ids = await db.RepricingEvents
+            var now = DateTime.UtcNow;
+
+            var waiting = db.RepricingEvents.Where(x =>
+                x.Status == RepricingStatus.AwaitingVerification &&
+                x.AmazonSubmissionAccepted == true &&
+                x.SubmittedAtUtc != null &&
+                !x.VerificationReviewRequired &&
+                x.Product.AmazonStore.SellerId == _amazonOptions.SellerId &&
+                x.Product.AmazonStore.MarketplaceId == _amazonOptions.MarketplaceId);
+
+            // Recover exhausted attempts whose owner crashed or disappeared.
+            await waiting
+                .Where(x =>
+                    x.VerificationAttemptCount >=
+                        _workerOptions.VerificationMaximumAttempts &&
+                    (x.VerificationLeaseExpiresAtUtc == null ||
+                     x.VerificationLeaseExpiresAtUtc <= now))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.VerificationReviewRequired, true)
+                    .SetProperty(x => x.NextVerificationAttemptAtUtc, (DateTime?)null)
+                    .SetProperty(x => x.VerificationLeaseId, (Guid?)null)
+                    .SetProperty(x => x.VerificationLeaseExpiresAtUtc, (DateTime?)null)
+                    .SetProperty(x => x.LastVerificationReason,
+                        "Verification attempt limit reached; review required."),
+                    cancellationToken);
+
+            ids = await waiting
                 .AsNoTracking()
                 .Where(x =>
-                    x.Status == RepricingStatus.AwaitingVerification &&
-                    x.AmazonSubmissionAccepted == true &&
-                    x.SubmittedAtUtc != null)
-                .OrderBy(x => x.SubmittedAtUtc)
+                    x.VerificationAttemptCount <
+                        _workerOptions.VerificationMaximumAttempts &&
+                    (x.NextVerificationAttemptAtUtc == null ||
+                     x.NextVerificationAttemptAtUtc <= now) &&
+                    (x.VerificationLeaseExpiresAtUtc == null ||
+                     x.VerificationLeaseExpiresAtUtc <= now))
+                .OrderBy(x => x.NextVerificationAttemptAtUtc ?? x.SubmittedAtUtc)
                 .ThenBy(x => x.Id)
                 .Take(batchSize)
                 .Select(x => x.Id)
@@ -60,10 +101,21 @@ public sealed class RepricingVerificationService
 
         foreach (var id in ids)
         {
+            var leaseId = Guid.NewGuid();
+
             try
             {
-                if (await VerifyOneAsync(id, cancellationToken))
+                if (await VerifyOneAsync(id, leaseId, cancellationToken))
+                {
                     verifiedCount++;
+                }
+                else
+                {
+                    await ScheduleRetryAsync(
+                        id, leaseId,
+                        "Price verification was inconclusive; see verification logs.",
+                        cancellationToken);
+                }
             }
             catch (OperationCanceledException)
                 when (cancellationToken.IsCancellationRequested)
@@ -78,14 +130,105 @@ public sealed class RepricingVerificationService
                     "Price verification failed for event {EventId}; "
                     + "no successful completion was recorded by this attempt.",
                     id);
+
+                try
+                {
+                    await ScheduleRetryAsync(
+                        id, leaseId,
+                        "Verification attempt failed: " + exception.GetType().Name,
+                        cancellationToken);
+                }
+                catch (OperationCanceledException)
+                    when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception schedulingException)
+                {
+                    _logger.LogError(
+                        schedulingException,
+                        "Could not schedule event {EventId}; "
+                        + "the persisted lease will expire.",
+                        id);
+                }
             }
         }
 
         return verifiedCount;
     }
 
+    private async Task ScheduleRetryAsync(
+        Guid id,
+        Guid leaseId,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<RepricerDbContext>();
+
+        var item = await db.RepricingEvents
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x =>
+                x.Id == id &&
+                x.Status == RepricingStatus.AwaitingVerification &&
+                x.VerificationLeaseId == leaseId,
+                cancellationToken);
+
+        if (item is null)
+            return;
+
+        var reviewRequired = item.VerificationAttemptCount >=
+            _workerOptions.VerificationMaximumAttempts;
+
+        var delaySeconds = _workerOptions.VerificationInitialDelaySeconds;
+
+        for (var attempt = 1;
+             attempt < item.VerificationAttemptCount &&
+             delaySeconds < _workerOptions.VerificationMaximumDelaySeconds;
+             attempt++)
+        {
+            delaySeconds = Math.Min(
+                delaySeconds * 2,
+                _workerOptions.VerificationMaximumDelaySeconds);
+        }
+
+        DateTime? nextAttempt = reviewRequired
+            ? null
+            : DateTime.UtcNow.AddSeconds(delaySeconds);
+
+        var recordedReason = reviewRequired
+            ? "Review required after attempt limit. " + reason
+            : reason;
+
+        if (recordedReason.Length > 1000)
+            recordedReason = recordedReason[..1000];
+
+        // The token prevents an expired owner from updating a new owner's work.
+        var updated = await db.RepricingEvents
+            .Where(x =>
+                x.Id == id &&
+                x.Status == RepricingStatus.AwaitingVerification &&
+                x.VerificationLeaseId == leaseId)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.VerificationReviewRequired, reviewRequired)
+                .SetProperty(x => x.NextVerificationAttemptAtUtc, nextAttempt)
+                .SetProperty(x => x.LastVerificationReason, recordedReason)
+                .SetProperty(x => x.VerificationLeaseId, (Guid?)null)
+                .SetProperty(x => x.VerificationLeaseExpiresAtUtc, (DateTime?)null),
+                cancellationToken);
+
+        if (updated == 1 && reviewRequired)
+        {
+            _logger.LogWarning(
+                "Event {EventId} requires review after {AttemptCount} attempts.",
+                id,
+                item.VerificationAttemptCount);
+        }
+    }
+
     private async Task<bool> VerifyOneAsync(
         Guid id,
+        Guid leaseId,
         CancellationToken cancellationToken)
     {
         await using var scope = _scopeFactory.CreateAsyncScope();
@@ -94,6 +237,39 @@ public sealed class RepricingVerificationService
             .GetRequiredService<RepricerDbContext>();
         var reader = scope.ServiceProvider
             .GetRequiredService<IAmazonListingReader>();
+
+        var claimTime = DateTime.UtcNow;
+        var leaseExpiry = claimTime.AddSeconds(
+            _workerOptions.VerificationLeaseSeconds);
+
+        var claimed = await db.RepricingEvents
+            .Where(x =>
+                x.Id == id &&
+                x.Status == RepricingStatus.AwaitingVerification &&
+                x.AmazonSubmissionAccepted == true &&
+                x.SubmittedAtUtc != null &&
+                !x.VerificationReviewRequired &&
+                x.Product.AmazonStore.SellerId == _amazonOptions.SellerId &&
+                x.Product.AmazonStore.MarketplaceId == _amazonOptions.MarketplaceId &&
+                x.VerificationAttemptCount <
+                    _workerOptions.VerificationMaximumAttempts &&
+                (x.NextVerificationAttemptAtUtc == null ||
+                 x.NextVerificationAttemptAtUtc <= claimTime) &&
+                (x.VerificationLeaseExpiresAtUtc == null ||
+                 x.VerificationLeaseExpiresAtUtc <= claimTime))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.VerificationLeaseId, (Guid?)leaseId)
+                .SetProperty(x => x.VerificationLeaseExpiresAtUtc, (DateTime?)leaseExpiry)
+                .SetProperty(x => x.LastVerificationAttemptAtUtc, (DateTime?)claimTime)
+                .SetProperty(x => x.NextVerificationAttemptAtUtc, (DateTime?)leaseExpiry)
+                .SetProperty(x => x.VerificationAttemptCount,
+                    x => x.VerificationAttemptCount + 1)
+                .SetProperty(x => x.LastVerificationReason,
+                    "Verification attempt started."),
+                cancellationToken);
+
+        if (claimed != 1)
+            return false;
 
         var initial = await db.RepricingEvents
             .AsNoTracking()
@@ -156,6 +332,10 @@ public sealed class RepricingVerificationService
 
         if (current is null ||
             current.Status != RepricingStatus.AwaitingVerification ||
+            current.VerificationLeaseId != leaseId ||
+            current.VerificationLeaseExpiresAtUtc == null ||
+            current.VerificationLeaseExpiresAtUtc <= DateTime.UtcNow ||
+            current.VerificationReviewRequired ||
             current.AmazonSubmissionAccepted != true ||
             current.SubmittedAtUtc != initial.SubmittedAtUtc ||
             current.AmazonSubmissionId != initial.AmazonSubmissionId ||
@@ -194,7 +374,8 @@ public sealed class RepricingVerificationService
             expectation,
             observation,
             DateTimeOffset.UtcNow,
-            TimeSpan.FromMinutes(2));
+            TimeSpan.FromSeconds(
+                _workerOptions.VerificationMaximumObservationAgeSeconds));
 
         if (!result.IsVerified || result.VerifiedPrice is null)
         {
@@ -208,6 +389,10 @@ public sealed class RepricingVerificationService
         current.MarkApplied(result.VerifiedPrice.Value);
         current.MarkReconciled();
         current.Product.CurrentPrice = result.VerifiedPrice.Value;
+        current.VerificationLeaseId = null;
+        current.VerificationLeaseExpiresAtUtc = null;
+        current.NextVerificationAttemptAtUtc = null;
+        current.LastVerificationReason = result.Reason;
 
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);

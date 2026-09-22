@@ -4,6 +4,7 @@ using AmazonRepricer.Domain.Enums;
 using AmazonRepricer.Infrastructure.Amazon;
 using AmazonRepricer.Infrastructure.Persistence;
 using AmazonRepricer.IntegrationTests.PostgreSql;
+using AmazonRepricer.Worker;
 using AmazonRepricer.Worker.Repricing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -144,34 +145,41 @@ public sealed class RepricingVerificationServicePostgreSqlTests
     }
 
     [Fact]
-    public async Task ConcurrentVerification_CompletesOnlyOnce()
+    public async Task ConcurrentVerification_UsesOneLeaseAndOneAmazonRead()
     {
         var scenario = await SeedAsync();
 
-        var bothReadsStarted = new TaskCompletionSource<bool>(
+        var readStarted = new TaskCompletionSource<bool>(
             TaskCreationOptions.RunContinuationsAsynchronously);
-
-        var startedCount = 0;
+        var releaseRead = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
 
         var reader = new StubReader(async () =>
         {
-            if (Interlocked.Increment(ref startedCount) == 2)
-                bothReadsStarted.TrySetResult(true);
-
-            await bothReadsStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            readStarted.TrySetResult(true);
+            await releaseRead.Task.WaitAsync(TimeSpan.FromSeconds(10));
             return Observation(scenario);
         });
 
         await using var provider = CreateProvider(reader);
 
         var first = CreateService(provider, scenario).VerifyAsync(100);
-        var second = CreateService(provider, scenario).VerifyAsync(100);
 
-        var results = await Task.WhenAll(first, second);
+        try
+        {
+            await readStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-        Assert.Equal(2, reader.CallCount);
-        Assert.Equal(1, results.Sum());
+            var second = await CreateService(provider, scenario).VerifyAsync(100);
 
+            Assert.Equal(0, second);
+            Assert.Equal(1, reader.CallCount);
+        }
+        finally
+        {
+            releaseRead.TrySetResult(true);
+        }
+
+        Assert.Equal(1, await first);
         await AssertStateAsync(scenario, RepricingStatus.Applied, 99m);
     }
 
@@ -214,6 +222,267 @@ public sealed class RepricingVerificationServicePostgreSqlTests
             scenario, RepricingStatus.AwaitingVerification, 100m);
     }
 
+    [Theory]
+    [InlineData(0, 30)]
+    [InlineData(1, 60)]
+    [InlineData(5, 900)]
+    public async Task RetryDelay_IsPersistedAndRespected(
+        int previousAttempts,
+        int expectedDelaySeconds)
+    {
+        var scenario = await SeedAsync();
+
+        await using (var db = _database.CreateDbContext())
+        {
+            var item = await db.RepricingEvents
+                .SingleAsync(x => x.Id == scenario.EventId);
+            item.VerificationAttemptCount = previousAttempts;
+            await db.SaveChangesAsync();
+        }
+
+        var reader = new StubReader(() => Task.FromResult(
+            Observation(scenario) with
+            {
+                Offers = Array.Empty<AmazonListingOffer>()
+            }));
+
+        await using var provider = CreateProvider(reader);
+        var service = CreateService(provider, scenario);
+        var before = DateTime.UtcNow;
+
+        Assert.Equal(0, await service.VerifyAsync(100));
+
+        var after = DateTime.UtcNow;
+
+        await using var verification = _database.CreateDbContext();
+        var persisted = await verification.RepricingEvents
+            .AsNoTracking()
+            .SingleAsync(x => x.Id == scenario.EventId);
+
+        Assert.Equal(previousAttempts + 1, persisted.VerificationAttemptCount);
+        Assert.NotNull(persisted.LastVerificationAttemptAtUtc);
+        Assert.NotNull(persisted.NextVerificationAttemptAtUtc);
+        Assert.InRange(
+            persisted.NextVerificationAttemptAtUtc!.Value,
+            before.AddSeconds(expectedDelaySeconds).AddMilliseconds(-1),
+            after.AddSeconds(expectedDelaySeconds).AddMilliseconds(1));
+        Assert.False(persisted.VerificationReviewRequired);
+        Assert.Null(persisted.VerificationLeaseId);
+        Assert.Null(persisted.VerificationLeaseExpiresAtUtc);
+        Assert.False(string.IsNullOrWhiteSpace(persisted.LastVerificationReason));
+
+        Assert.Equal(0, await service.VerifyAsync(100));
+        Assert.Equal(1, reader.CallCount);
+    }
+
+    [Fact]
+    public async Task AttemptLimit_RequiresReviewWithoutApplyingPrice()
+    {
+        var scenario = await SeedAsync();
+
+        await using (var db = _database.CreateDbContext())
+        {
+            var item = await db.RepricingEvents
+                .SingleAsync(x => x.Id == scenario.EventId);
+            item.VerificationAttemptCount = 9;
+            await db.SaveChangesAsync();
+        }
+
+        var reader = new StubReader(() => Task.FromResult(
+            Observation(scenario) with
+            {
+                Offers = Array.Empty<AmazonListingOffer>()
+            }));
+
+        await using var provider = CreateProvider(reader);
+        var service = CreateService(provider, scenario);
+
+        Assert.Equal(0, await service.VerifyAsync(100));
+        Assert.Equal(0, await service.VerifyAsync(100));
+        Assert.Equal(1, reader.CallCount);
+
+        await using var verification = _database.CreateDbContext();
+        var persisted = await verification.RepricingEvents
+            .AsNoTracking()
+            .SingleAsync(x => x.Id == scenario.EventId);
+
+        Assert.Equal(10, persisted.VerificationAttemptCount);
+        Assert.True(persisted.VerificationReviewRequired);
+        Assert.Null(persisted.NextVerificationAttemptAtUtc);
+        Assert.Null(persisted.VerificationLeaseId);
+        Assert.Null(persisted.VerificationLeaseExpiresAtUtc);
+
+        await AssertStateAsync(
+            scenario, RepricingStatus.AwaitingVerification, 100m);
+    }
+
+    [Fact]
+    public async Task ExpiredLease_AllowsRecoveryAndVerification()
+    {
+        var scenario = await SeedAsync();
+
+        await using (var db = _database.CreateDbContext())
+        {
+            var item = await db.RepricingEvents
+                .SingleAsync(x => x.Id == scenario.EventId);
+
+            item.VerificationAttemptCount = 1;
+            item.VerificationLeaseId = Guid.NewGuid();
+            item.VerificationLeaseExpiresAtUtc = DateTime.UtcNow.AddMinutes(-1);
+            item.NextVerificationAttemptAtUtc = DateTime.UtcNow.AddMinutes(-1);
+            await db.SaveChangesAsync();
+        }
+
+        var reader = new StubReader(
+            () => Task.FromResult(Observation(scenario)));
+
+        await using var provider = CreateProvider(reader);
+
+        Assert.Equal(
+            1, await CreateService(provider, scenario).VerifyAsync(100));
+        Assert.Equal(1, reader.CallCount);
+
+        await using var verification = _database.CreateDbContext();
+        var persisted = await verification.RepricingEvents
+            .AsNoTracking()
+            .SingleAsync(x => x.Id == scenario.EventId);
+
+        Assert.Equal(2, persisted.VerificationAttemptCount);
+        Assert.Null(persisted.VerificationLeaseId);
+        Assert.Null(persisted.VerificationLeaseExpiresAtUtc);
+        Assert.Null(persisted.NextVerificationAttemptAtUtc);
+
+        await AssertStateAsync(scenario, RepricingStatus.Applied, 99m);
+    }
+
+    [Fact]
+    public async Task ExpiredFinalAttempt_RequiresReviewWithoutAnotherRead()
+    {
+        var scenario = await SeedAsync();
+
+        await using (var db = _database.CreateDbContext())
+        {
+            var item = await db.RepricingEvents
+                .SingleAsync(x => x.Id == scenario.EventId);
+
+            item.VerificationAttemptCount = 10;
+            item.VerificationLeaseId = Guid.NewGuid();
+            item.VerificationLeaseExpiresAtUtc = DateTime.UtcNow.AddMinutes(-1);
+            item.NextVerificationAttemptAtUtc = DateTime.UtcNow.AddMinutes(-1);
+            await db.SaveChangesAsync();
+        }
+
+        var reader = new StubReader(
+            () => Task.FromResult(Observation(scenario)));
+
+        await using var provider = CreateProvider(reader);
+
+        Assert.Equal(
+            0, await CreateService(provider, scenario).VerifyAsync(100));
+        Assert.Equal(0, reader.CallCount);
+
+        await using var verification = _database.CreateDbContext();
+        var persisted = await verification.RepricingEvents
+            .AsNoTracking()
+            .SingleAsync(x => x.Id == scenario.EventId);
+
+        Assert.True(persisted.VerificationReviewRequired);
+        Assert.Equal(10, persisted.VerificationAttemptCount);
+        Assert.Null(persisted.VerificationLeaseId);
+        Assert.Null(persisted.VerificationLeaseExpiresAtUtc);
+        Assert.Null(persisted.NextVerificationAttemptAtUtc);
+
+        await AssertStateAsync(
+            scenario, RepricingStatus.AwaitingVerification, 100m);
+    }
+
+    [Fact]
+    public async Task ReplacedLease_OldOwnerCannotCompleteOrReschedule()
+    {
+        var scenario = await SeedAsync();
+        var replacementLease = Guid.NewGuid();
+        var replacementExpiry = DateTime.UtcNow.AddMinutes(5);
+
+        var reader = new StubReader(async () =>
+        {
+            await using var db = _database.CreateDbContext();
+            var item = await db.RepricingEvents
+                .SingleAsync(x => x.Id == scenario.EventId);
+
+            // Simulate a later owner taking over after the original lease.
+            item.VerificationLeaseId = replacementLease;
+            item.VerificationLeaseExpiresAtUtc = replacementExpiry;
+            item.NextVerificationAttemptAtUtc = replacementExpiry;
+            item.LastVerificationReason = "Owned by replacement worker.";
+            await db.SaveChangesAsync();
+
+            return Observation(scenario);
+        });
+
+        await using var provider = CreateProvider(reader);
+
+        Assert.Equal(
+            0, await CreateService(provider, scenario).VerifyAsync(100));
+
+        await using var verification = _database.CreateDbContext();
+        var persisted = await verification.RepricingEvents
+            .AsNoTracking()
+            .SingleAsync(x => x.Id == scenario.EventId);
+
+        Assert.Equal(replacementLease, persisted.VerificationLeaseId);
+        Assert.NotNull(persisted.VerificationLeaseExpiresAtUtc);
+        Assert.True(persisted.VerificationLeaseExpiresAtUtc > DateTime.UtcNow);
+        Assert.Equal(
+            persisted.VerificationLeaseExpiresAtUtc,
+            persisted.NextVerificationAttemptAtUtc);
+        Assert.Equal(
+            "Owned by replacement worker.",
+            persisted.LastVerificationReason);
+
+        await AssertStateAsync(
+            scenario, RepricingStatus.AwaitingVerification, 100m);
+    }
+
+    [Fact]
+    public async Task DelayedOlderEvent_DoesNotBlockDueEvent_WithBatchSizeOne()
+    {
+        var older = await SeedAsync();
+        var newer = await SeedAsync();
+
+        await using (var db = _database.CreateDbContext())
+        {
+            var olderProduct = await db.Products
+                .SingleAsync(x => x.Id == older.ProductId);
+            var newerProduct = await db.Products
+                .SingleAsync(x => x.Id == newer.ProductId);
+            var olderEvent = await db.RepricingEvents
+                .SingleAsync(x => x.Id == older.EventId);
+
+            // Both products must belong to the configured seller.
+            newerProduct.AmazonStoreId = olderProduct.AmazonStoreId;
+            olderEvent.NextVerificationAttemptAtUtc =
+                DateTime.UtcNow.AddMinutes(10);
+
+            await db.SaveChangesAsync();
+        }
+
+        newer = newer with { SellerId = older.SellerId };
+
+        var reader = new StubReader(
+            () => Task.FromResult(Observation(newer)));
+
+        await using var provider = CreateProvider(reader);
+
+        Assert.Equal(
+            1, await CreateService(provider, older).VerifyAsync(1));
+        Assert.Equal(1, reader.CallCount);
+
+        await AssertStateAsync(
+            older, RepricingStatus.AwaitingVerification, 100m);
+        await AssertStateAsync(
+            newer, RepricingStatus.Applied, 99m);
+    }
+
     private ServiceProvider CreateProvider(
         IAmazonListingReader reader,
         IInterceptor? interceptor = null)
@@ -244,7 +513,8 @@ public sealed class RepricingVerificationServicePostgreSqlTests
                 UseMock = useMock,
                 SellerId = scenario.SellerId,
                 MarketplaceId = "A33AVAJ2PDY3EV"
-            }));
+            }),
+            Options.Create(new WorkerOptions()));
     }
 
     private async Task<Scenario> SeedAsync()

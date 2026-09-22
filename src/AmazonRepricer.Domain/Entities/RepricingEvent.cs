@@ -39,6 +39,20 @@ public sealed class RepricingEvent
 
     public DateTime? ReconciledAtUtc { get; set; }
 
+    public int VerificationAttemptCount { get; set; }
+
+    public DateTime? LastVerificationAttemptAtUtc { get; set; }
+
+    public DateTime? NextVerificationAttemptAtUtc { get; set; }
+
+    public string? LastVerificationReason { get; set; }
+
+    public Guid? VerificationLeaseId { get; set; }
+
+    public DateTime? VerificationLeaseExpiresAtUtc { get; set; }
+
+    public bool VerificationReviewRequired { get; set; }
+
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
     public Product Product { get; set; } = null!;
