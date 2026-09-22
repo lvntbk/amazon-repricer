@@ -6,9 +6,9 @@ namespace AmazonRepricer.Tests.Repricing;
 public sealed class RepricingEventApplicationTests
 {
     [Fact]
-    public void MarkApplied_ShouldCompleteApprovedEvent()
+    public void MarkApplied_ShouldCompleteAwaitingVerificationEvent()
     {
-        var repricingEvent = CreateApprovedEvent();
+        var repricingEvent = CreateAwaitingVerificationEvent();
 
         repricingEvent.MarkApplied(1098.90m);
 
@@ -32,14 +32,14 @@ public sealed class RepricingEventApplicationTests
             () => repricingEvent.MarkApplied(1098.90m));
 
         Assert.Contains(
-            "Only approved events",
+            "awaiting verification",
             exception.Message);
     }
 
     [Fact]
     public void MarkApplied_ShouldRejectNonPositivePrice()
     {
-        var repricingEvent = CreateApprovedEvent();
+        var repricingEvent = CreateAwaitingVerificationEvent();
 
         Assert.Throws<ArgumentOutOfRangeException>(
             () => repricingEvent.MarkApplied(0));
@@ -128,6 +128,8 @@ public sealed class RepricingEventApplicationTests
             accepted: true,
             submissionId: "submission-001",
             issues: Array.Empty<string>());
+        appliedEvent.BeginApplication();
+        appliedEvent.MarkAwaitingVerification();
         appliedEvent.MarkApplied(appliedEvent.ProposedPrice);
 
         appliedEvent.MarkReconciled();
@@ -161,7 +163,7 @@ public sealed class RepricingEventApplicationTests
     }
 
     [Fact]
-    public void ApplyingEvent_ShouldAllowAcceptedCompletion()
+    public void AcceptedEvent_ShouldCompleteAfterAwaitingVerification()
     {
         var repricingEvent = CreateApprovedEvent();
         repricingEvent.BeginApplication();
@@ -171,6 +173,7 @@ public sealed class RepricingEventApplicationTests
             submissionId: "submission-applying-001",
             issues: Array.Empty<string>());
 
+        repricingEvent.MarkAwaitingVerification();
         repricingEvent.MarkApplied(
             repricingEvent.ProposedPrice);
 
@@ -213,6 +216,84 @@ public sealed class RepricingEventApplicationTests
             repricingEvent.AmazonSubmissionIssues);
         Assert.NotNull(repricingEvent.SubmittedAtUtc);
         Assert.NotNull(repricingEvent.ProcessedAtUtc);
+    }
+
+    [Theory]
+    [InlineData(RepricingStatus.Pending)]
+    [InlineData(RepricingStatus.Approved)]
+    [InlineData(RepricingStatus.Applying)]
+    [InlineData(RepricingStatus.Rejected)]
+    [InlineData(RepricingStatus.Failed)]
+    [InlineData(RepricingStatus.Applied)]
+    public void MarkApplied_CannotBypassVerificationState(
+        RepricingStatus status)
+    {
+        var item = new RepricingEvent
+        {
+            Status = status,
+            ProposedPrice = 99m,
+            AmazonSubmissionAccepted = true,
+            SubmittedAtUtc = DateTime.UtcNow
+        };
+
+        Assert.Throws<InvalidOperationException>(
+            () => item.MarkApplied(99m));
+
+        Assert.Equal(status, item.Status);
+        Assert.Null(item.AppliedPrice);
+        Assert.Null(item.ProcessedAtUtc);
+    }
+
+    [Fact]
+    public void MarkApplied_MismatchingPrice_KeepsEventWaiting()
+    {
+        var item = CreateAwaitingVerificationEvent();
+
+        Assert.Throws<InvalidOperationException>(
+            () => item.MarkApplied(item.ProposedPrice + 1m));
+
+        Assert.Equal(RepricingStatus.AwaitingVerification, item.Status);
+        Assert.False(item.WasApplied);
+        Assert.Null(item.AppliedPrice);
+        Assert.Null(item.ProcessedAtUtc);
+    }
+
+    [Fact]
+    public void MarkApplied_MissingSubmissionTime_KeepsEventWaiting()
+    {
+        var item = CreateAwaitingVerificationEvent();
+        item.SubmittedAtUtc = null;
+
+        Assert.Throws<InvalidOperationException>(
+            () => item.MarkApplied(item.ProposedPrice));
+
+        Assert.Equal(RepricingStatus.AwaitingVerification, item.Status);
+        Assert.False(item.WasApplied);
+    }
+
+    [Fact]
+    public void MarkApplied_UnacceptedSubmission_KeepsEventWaiting()
+    {
+        var item = CreateAwaitingVerificationEvent();
+        item.AmazonSubmissionAccepted = false;
+
+        Assert.Throws<InvalidOperationException>(
+            () => item.MarkApplied(item.ProposedPrice));
+
+        Assert.Equal(RepricingStatus.AwaitingVerification, item.Status);
+        Assert.False(item.WasApplied);
+    }
+
+    private static RepricingEvent CreateAwaitingVerificationEvent()
+    {
+        var item = CreateApprovedEvent();
+        item.BeginApplication();
+        item.RecordAmazonSubmission(
+            true,
+            "submission-verification-test",
+            Array.Empty<string>());
+        item.MarkAwaitingVerification();
+        return item;
     }
 
     private static RepricingEvent CreateApprovedEvent()

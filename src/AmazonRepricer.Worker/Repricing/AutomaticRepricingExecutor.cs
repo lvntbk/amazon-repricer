@@ -284,18 +284,17 @@ public sealed class AutomaticRepricingExecutor
             return AutomaticRepricingExecutionResult.Failed(issues);
         }
 
-        repricingEvent.MarkApplied(repricingEvent.ProposedPrice);
-        product.CurrentPrice = repricingEvent.ProposedPrice;
+        repricingEvent.MarkAwaitingVerification();
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "Automatic repricing accepted for SKU {Sku}. Price {OldPrice} -> {NewPrice}. SubmissionId: {SubmissionId}",
+            "Automatic repricing submitted for SKU {Sku}; verification pending. Previous price {OldPrice}, proposed price {NewPrice}. SubmissionId: {SubmissionId}",
             product.Sku,
             repricingEvent.OldPrice,
             repricingEvent.ProposedPrice,
             updateResult.SubmissionId);
 
-        return AutomaticRepricingExecutionResult.Applied();
+        return AutomaticRepricingExecutionResult.AwaitingVerification();
     }
 }

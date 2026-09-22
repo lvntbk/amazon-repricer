@@ -53,6 +53,21 @@ public sealed class RepricingReconciliationWorker
                         _options.ReconciliationBatchSize,
                         stoppingToken);
 
+                var verificationService =
+                    scope.ServiceProvider.GetRequiredService<
+                        RepricingVerificationService>();
+
+                var verifiedCount = await verificationService.VerifyAsync(
+                    _options.ReconciliationBatchSize,
+                    stoppingToken);
+
+                if (verifiedCount > 0)
+                {
+                    _logger.LogInformation(
+                        "Verified {VerifiedCount} Amazon price updates.",
+                        verifiedCount);
+                }
+
                 if (reconciledCount > 0)
                 {
                     _logger.LogWarning(

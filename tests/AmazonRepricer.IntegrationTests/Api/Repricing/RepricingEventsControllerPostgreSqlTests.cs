@@ -93,7 +93,15 @@ public sealed class RepricingEventsControllerPostgreSqlTests
 
         var firstResult = await firstExecutionTask;
 
-        Assert.IsType<OkObjectResult>(firstResult);
+        var accepted = Assert.IsType<AcceptedAtActionResult>(firstResult);
+        Assert.Equal(202, accepted.StatusCode);
+        Assert.Equal(
+            nameof(RepricingEventsController.GetById),
+            accepted.ActionName);
+        Assert.NotNull(accepted.RouteValues);
+        Assert.Equal(
+            scenario.RepricingEventId,
+            Assert.IsType<Guid>(accepted.RouteValues!["id"]));
         Assert.IsType<ConflictObjectResult>(duplicateResult);
         Assert.Equal(1, updater.CallCount);
 
@@ -114,14 +122,17 @@ public sealed class RepricingEventsControllerPostgreSqlTests
                 .SingleAsync();
 
         Assert.Equal(
-            RepricingStatus.Applied,
+            RepricingStatus.AwaitingVerification,
             persistedEvent.Status);
-        Assert.True(persistedEvent.WasApplied);
-        Assert.Equal(99m, persistedEvent.AppliedPrice);
+        Assert.False(persistedEvent.WasApplied);
+        Assert.Null(persistedEvent.ProcessedAtUtc);
+        Assert.True(persistedEvent.AmazonSubmissionAccepted == true);
+        Assert.NotNull(persistedEvent.SubmittedAtUtc);
+        Assert.Null(persistedEvent.AppliedPrice);
         Assert.Equal(
             "submission-manual-claim-001",
             persistedEvent.AmazonSubmissionId);
-        Assert.Equal(99m, persistedPrice);
+        Assert.Equal(100m, persistedPrice);
     }
 
     [Fact]
@@ -156,7 +167,8 @@ public sealed class RepricingEventsControllerPostgreSqlTests
             scenario.RepricingEventId,
             CancellationToken.None);
 
-        Assert.IsType<OkObjectResult>(result);
+        var accepted = Assert.IsType<AcceptedAtActionResult>(result);
+        Assert.Equal(202, accepted.StatusCode);
         Assert.Equal(1, updater.CallCount);
 
         await using var verificationContext =
@@ -177,11 +189,14 @@ public sealed class RepricingEventsControllerPostgreSqlTests
                 .SingleAsync();
 
         Assert.Equal(
-            RepricingStatus.Applied,
+            RepricingStatus.AwaitingVerification,
             persistedEvent.Status);
 
-        Assert.True(persistedEvent.WasApplied);
-        Assert.Equal(99m, persistedPrice);
+        Assert.False(persistedEvent.WasApplied);
+        Assert.Null(persistedEvent.ProcessedAtUtc);
+        Assert.True(persistedEvent.AmazonSubmissionAccepted == true);
+        Assert.NotNull(persistedEvent.SubmittedAtUtc);
+        Assert.Equal(100m, persistedPrice);
     }
 
     [Fact]
