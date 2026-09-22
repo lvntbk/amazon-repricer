@@ -39,6 +39,20 @@ public sealed class RepricingEvent
 
     public DateTime? ReconciledAtUtc { get; set; }
 
+    public int VerificationAttemptCount { get; set; }
+
+    public DateTime? LastVerificationAttemptAtUtc { get; set; }
+
+    public DateTime? NextVerificationAttemptAtUtc { get; set; }
+
+    public string? LastVerificationReason { get; set; }
+
+    public Guid? VerificationLeaseId { get; set; }
+
+    public DateTime? VerificationLeaseExpiresAtUtc { get; set; }
+
+    public bool VerificationReviewRequired { get; set; }
+
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
     public Product Product { get; set; } = null!;
@@ -133,6 +147,23 @@ public sealed class RepricingEvent
         SubmittedAtUtc = DateTime.UtcNow;
     }
 
+    public void MarkAwaitingVerification()
+    {
+        if (Status != RepricingStatus.Applying)
+        {
+            throw new InvalidOperationException(
+                "Only applying events can await verification.");
+        }
+
+        if (AmazonSubmissionAccepted != true)
+        {
+            throw new InvalidOperationException(
+                "Amazon must accept the submission before verification.");
+        }
+
+        Status = RepricingStatus.AwaitingVerification;
+    }
+
     public void MarkReconciled()
     {
         if (Status != RepricingStatus.Applied &&
@@ -147,13 +178,29 @@ public sealed class RepricingEvent
 
     public void MarkApplied(decimal appliedPrice)
     {
-        EnsureReadyForApplicationCompletion();
+        if (Status != RepricingStatus.AwaitingVerification)
+        {
+            throw new InvalidOperationException(
+                "Only events awaiting verification can be marked applied.");
+        }
+
+        if (AmazonSubmissionAccepted != true || SubmittedAtUtc is null)
+        {
+            throw new InvalidOperationException(
+                "An accepted submission must be recorded before completion.");
+        }
 
         if (appliedPrice <= 0)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(appliedPrice),
                 "Applied price must be greater than zero.");
+        }
+
+        if (appliedPrice != ProposedPrice)
+        {
+            throw new InvalidOperationException(
+                "Verified price must match the proposed price.");
         }
 
         Status = RepricingStatus.Applied;

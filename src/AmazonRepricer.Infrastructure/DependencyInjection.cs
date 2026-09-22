@@ -95,6 +95,11 @@ public static class DependencyInjection
                     options);
             });
 
+        services.AddHttpClient<IAmazonListingReader, AmazonListingsReader>(
+                ConfigureAmazonClient)
+            .AddStandardResilienceHandler(
+                ConfigureAmazonReadResilience);
+
         services.AddHttpClient<AmazonSpApiPricingProvider>(
                 ConfigureAmazonClient)
             .AddStandardResilienceHandler(

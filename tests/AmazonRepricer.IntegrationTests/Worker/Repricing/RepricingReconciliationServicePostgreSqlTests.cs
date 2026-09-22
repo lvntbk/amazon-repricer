@@ -19,7 +19,7 @@ public sealed class RepricingReconciliationServicePostgreSqlTests
     }
 
     [Fact]
-    public async Task AcceptedSubmission_FinalizesEventAndUpdatesProductPrice()
+    public async Task AcceptedSubmission_AwaitsVerificationAndKeepsProductPrice()
     {
         var scenario = await SeedIncompleteSubmissionAsync(
             accepted: true,
@@ -53,14 +53,19 @@ public sealed class RepricingReconciliationServicePostgreSqlTests
             .SingleAsync();
 
         Assert.True(reconciledCount >= 1);
-        Assert.Equal(RepricingStatus.Applied, persistedEvent.Status);
-        Assert.True(persistedEvent.WasApplied);
-        Assert.Equal(99m, persistedEvent.AppliedPrice);
+        Assert.Equal(
+            RepricingStatus.AwaitingVerification,
+            persistedEvent.Status);
+        Assert.False(persistedEvent.WasApplied);
+        Assert.Null(persistedEvent.AppliedPrice);
+        Assert.Null(persistedEvent.ProcessedAtUtc);
+        Assert.True(persistedEvent.AmazonSubmissionAccepted == true);
+        Assert.NotNull(persistedEvent.SubmittedAtUtc);
         Assert.Equal(
             "submission-reconcile-accepted",
             persistedEvent.AmazonSubmissionId);
-        Assert.NotNull(persistedEvent.ReconciledAtUtc);
-        Assert.Equal(99m, persistedPrice);
+        Assert.Null(persistedEvent.ReconciledAtUtc);
+        Assert.Equal(100m, persistedPrice);
 
         await using var secondContext = _database.CreateDbContext();
 

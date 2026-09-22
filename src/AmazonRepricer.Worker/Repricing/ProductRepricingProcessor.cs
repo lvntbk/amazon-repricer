@@ -172,9 +172,11 @@ public sealed class ProductRepricingProcessor
         _metrics.RecordExecution(
             executionResult.WasApplied
                 ? "applied"
-                : executionResult.WasAttempted
-                    ? "failed"
-                    : "skipped");
+                : executionResult.IsAwaitingVerification
+                    ? "awaiting_verification"
+                    : executionResult.WasAttempted
+                        ? "failed"
+                        : "skipped");
 
         // DryRun and blocked executions are not persisted by the executor.
         await _dbContext.SaveChangesAsync(cancellationToken);

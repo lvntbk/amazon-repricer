@@ -182,7 +182,7 @@ public sealed class AutomaticRepricingExecutorTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_AmazonAccepted_MarksAppliedAndUpdatesPrice()
+    public async Task ExecuteAsync_AmazonAccepted_AwaitsVerificationAndKeepsPrice()
     {
         await using var dbContext = CreateDbContext();
 
@@ -214,22 +214,36 @@ public sealed class AutomaticRepricingExecutorTests
             repricingEvent);
 
         Assert.True(result.WasAttempted);
-        Assert.True(result.WasApplied);
+        Assert.False(result.WasApplied);
+        Assert.True(result.IsAwaitingVerification);
         Assert.Equal(1, updater.CallCount);
 
         Assert.Equal(
-            RepricingStatus.Applied,
+            RepricingStatus.AwaitingVerification,
             repricingEvent.Status);
 
-        Assert.True(repricingEvent.WasApplied);
-        Assert.Equal(99m, repricingEvent.AppliedPrice);
-        Assert.NotNull(repricingEvent.ProcessedAtUtc);
+        Assert.True(repricingEvent.AmazonSubmissionAccepted == true);
+        Assert.Equal("submission-001", repricingEvent.AmazonSubmissionId);
+        Assert.NotNull(repricingEvent.SubmittedAtUtc);
+        Assert.False(repricingEvent.WasApplied);
+        Assert.Null(repricingEvent.AppliedPrice);
+        Assert.Null(repricingEvent.ProcessedAtUtc);
         Assert.Null(repricingEvent.ApplicationError);
-        Assert.Equal(99m, product.CurrentPrice);
+        Assert.Equal(100m, product.CurrentPrice);
+
+        await dbContext.Entry(repricingEvent).ReloadAsync();
+        await dbContext.Entry(product).ReloadAsync();
+
+        Assert.Equal(
+            RepricingStatus.AwaitingVerification,
+            repricingEvent.Status);
+        Assert.False(repricingEvent.WasApplied);
+        Assert.Null(repricingEvent.AppliedPrice);
+        Assert.Equal(100m, product.CurrentPrice);
     }
 
     [Fact]
-    public async Task ExecuteAsync_AlreadyProcessedEvent_DoesNotCallAmazonAgain()
+    public async Task ExecuteAsync_AwaitingVerification_DoesNotCallAmazonAgain()
     {
         await using var dbContext = CreateDbContext();
 
@@ -265,7 +279,8 @@ public sealed class AutomaticRepricingExecutorTests
             repricingEvent);
 
         Assert.True(firstResult.WasAttempted);
-        Assert.True(firstResult.WasApplied);
+        Assert.False(firstResult.WasApplied);
+        Assert.True(firstResult.IsAwaitingVerification);
 
         Assert.False(duplicateResult.WasAttempted);
         Assert.False(duplicateResult.WasApplied);
@@ -274,8 +289,10 @@ public sealed class AutomaticRepricingExecutorTests
             duplicateResult.Reason);
 
         Assert.Equal(1, updater.CallCount);
-        Assert.Equal(RepricingStatus.Applied, repricingEvent.Status);
-        Assert.Equal(99m, product.CurrentPrice);
+        Assert.Equal(
+            RepricingStatus.AwaitingVerification,
+            repricingEvent.Status);
+        Assert.Equal(100m, product.CurrentPrice);
     }
 
     private static AutomaticRepricingExecutor CreateExecutor(

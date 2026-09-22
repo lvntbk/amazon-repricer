@@ -88,6 +88,8 @@ builder.Services.AddScoped<
     IRepricingReconciliationService,
     RepricingReconciliationService>();
 
+builder.Services.AddScoped<RepricingVerificationService>();
+
 var useMockAmazon =
     builder.Configuration.GetValue<bool>(
         $"{AmazonSpApiOptions.SectionName}:UseMock");

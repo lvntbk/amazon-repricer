@@ -26,7 +26,7 @@ public sealed class ProductRepricingProcessorPostgreSqlTests
     }
 
     [Fact]
-    public async Task CompleteFlow_ReadsAmazonPrice_CalculatesAndPersistsAppliedPrice()
+    public async Task SubmissionFlow_ReadsAmazonPrice_AndPersistsAwaitingVerification()
     {
         var scenario = await SeedScenarioAsync();
         var pricingProvider = new StubAmazonPricingProvider(
@@ -156,19 +156,22 @@ public sealed class ProductRepricingProcessorPostgreSqlTests
         Assert.Equal(99.90m, snapshot.FeaturedOfferPrice);
         Assert.False(snapshot.IsFeaturedOfferOurs);
 
-        Assert.Equal(RepricingStatus.Applied, repricingEvent.Status);
+        Assert.Equal(RepricingStatus.AwaitingVerification, repricingEvent.Status);
         Assert.Equal(100m, repricingEvent.OldPrice);
         Assert.Equal(98.90m, repricingEvent.ProposedPrice);
-        Assert.Equal(98.90m, repricingEvent.AppliedPrice);
-        Assert.True(repricingEvent.WasApplied);
+        Assert.Null(repricingEvent.AppliedPrice);
+        Assert.False(repricingEvent.WasApplied);
+        Assert.True(repricingEvent.AmazonSubmissionAccepted == true);
+        Assert.Equal("submission-e2e-001", repricingEvent.AmazonSubmissionId);
+        Assert.NotNull(repricingEvent.SubmittedAtUtc);
         Assert.NotNull(repricingEvent.ReviewedAtUtc);
-        Assert.NotNull(repricingEvent.ProcessedAtUtc);
+        Assert.Null(repricingEvent.ProcessedAtUtc);
         Assert.Null(repricingEvent.ApplicationError);
-        Assert.Equal(98.90m, product.CurrentPrice);
+        Assert.Equal(100m, product.CurrentPrice);
 
-        Assert.Contains(
-            "applied",
-            executionOutcomes);
+        Assert.Contains("awaiting_verification", executionOutcomes);
+        Assert.DoesNotContain("applied", executionOutcomes);
+        Assert.DoesNotContain("failed", executionOutcomes);
     }
 
     [Fact]

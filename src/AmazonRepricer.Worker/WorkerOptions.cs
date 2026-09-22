@@ -16,4 +16,14 @@ public sealed class WorkerOptions
     public int ReconciliationIntervalSeconds { get; set; } = 60;
 
     public int ReconciliationBatchSize { get; set; } = 100;
+
+    public int VerificationInitialDelaySeconds { get; set; } = 30;
+
+    public int VerificationMaximumDelaySeconds { get; set; } = 900;
+
+    public int VerificationMaximumAttempts { get; set; } = 10;
+
+    public int VerificationLeaseSeconds { get; set; } = 120;
+
+    public int VerificationMaximumObservationAgeSeconds { get; set; } = 120;
 }

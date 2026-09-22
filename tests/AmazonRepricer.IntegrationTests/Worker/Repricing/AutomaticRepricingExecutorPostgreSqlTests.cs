@@ -182,7 +182,7 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
     }
 
     [Fact]
-    public async Task AcceptedUpdate_PersistsApplicationClaimBeforeAmazonCall_ThenAppliesPrice()
+    public async Task AcceptedUpdate_PersistsClaim_ThenAwaitsVerification()
     {
         var scenario = await SeedScenarioAsync();
         var applicationClaimWasPersisted = false;
@@ -218,7 +218,8 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
                 .ExecuteAsync(product, repricingEvent);
 
             Assert.True(result.WasAttempted);
-            Assert.True(result.WasApplied);
+            Assert.False(result.WasApplied);
+            Assert.True(result.IsAwaitingVerification);
         }
 
         await using var verificationContext =
@@ -235,11 +236,11 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
             .SingleAsync();
 
         Assert.True(applicationClaimWasPersisted);
-        Assert.Equal(RepricingStatus.Applied, persistedEvent.Status);
-        Assert.True(persistedEvent.WasApplied);
-        Assert.Equal(99m, persistedEvent.AppliedPrice);
+        Assert.Equal(RepricingStatus.AwaitingVerification, persistedEvent.Status);
+        Assert.False(persistedEvent.WasApplied);
+        Assert.Null(persistedEvent.AppliedPrice);
         Assert.Null(persistedEvent.ApplicationError);
-        Assert.NotNull(persistedEvent.ProcessedAtUtc);
+        Assert.Null(persistedEvent.ProcessedAtUtc);
         Assert.Equal(
             "submission-postgresql-001",
             persistedEvent.AmazonSubmissionId);
@@ -247,7 +248,7 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
         Assert.Null(persistedEvent.AmazonSubmissionIssues);
         Assert.NotNull(persistedEvent.SubmittedAtUtc);
         Assert.Null(persistedEvent.ReconciledAtUtc);
-        Assert.Equal(99m, persistedPrice);
+        Assert.Equal(100m, persistedPrice);
         Assert.Equal(1, updater.CallCount);
     }
 
@@ -466,7 +467,7 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
 
         await using (var executionContext =
             _database.CreateDbContext(
-                new FailAppliedPersistenceInterceptor()))
+                new FailAwaitingVerificationPersistenceInterceptor()))
         {
             var (product, repricingEvent) = await LoadScenarioAsync(
                 executionContext,
@@ -603,7 +604,8 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
         var firstResult = await firstExecutionTask;
 
         Assert.True(firstResult.WasAttempted);
-        Assert.True(firstResult.WasApplied);
+        Assert.False(firstResult.WasApplied);
+        Assert.True(firstResult.IsAwaitingVerification);
 
         Assert.False(duplicateResult.WasAttempted);
         Assert.False(duplicateResult.WasApplied);
@@ -620,9 +622,9 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
             .AsNoTracking()
             .SingleAsync(x => x.Id == scenario.RepricingEventId);
 
-        Assert.Equal(RepricingStatus.Applied, persistedEvent.Status);
-        Assert.True(persistedEvent.WasApplied);
-        Assert.Equal(99m, persistedEvent.AppliedPrice);
+        Assert.Equal(RepricingStatus.AwaitingVerification, persistedEvent.Status);
+        Assert.False(persistedEvent.WasApplied);
+        Assert.Null(persistedEvent.AppliedPrice);
     }
 
     private async Task<ScenarioIds> SeedScenarioAsync(
@@ -805,7 +807,7 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
         }
     }
 
-    private sealed class FailAppliedPersistenceInterceptor
+    private sealed class FailAwaitingVerificationPersistenceInterceptor
         : SaveChangesInterceptor
     {
         public override ValueTask<InterceptionResult<int>>
@@ -818,7 +820,7 @@ public sealed class AutomaticRepricingExecutorPostgreSqlTests
                 .Entries<RepricingEvent>()
                 .Any(x =>
                     x.State == EntityState.Modified &&
-                    x.Entity.Status == RepricingStatus.Applied) == true;
+                    x.Entity.Status == RepricingStatus.AwaitingVerification) == true;
 
             if (appliedEvent)
             {

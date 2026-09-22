@@ -363,22 +363,22 @@ public sealed class RepricingEventsController : ControllerBase
             });
         }
 
-        repricingEvent.MarkApplied(
-            repricingEvent.ProposedPrice);
-
-        product.CurrentPrice =
-            repricingEvent.ProposedPrice;
+        repricingEvent.MarkAwaitingVerification();
 
         await _dbContext.SaveChangesAsync(
             cancellationToken);
 
-        return Ok(new
+        return AcceptedAtAction(
+            nameof(GetById),
+            new { id = repricingEvent.Id },
+            new
         {
             EventId = repricingEvent.Id,
             ProductId = product.Id,
             product.Sku,
             OldPrice = repricingEvent.OldPrice,
-            NewPrice = product.CurrentPrice,
+            CurrentPrice = product.CurrentPrice,
+            ProposedPrice = repricingEvent.ProposedPrice,
             Status = repricingEvent.Status.ToString(),
             SubmissionId = repricingEvent.AmazonSubmissionId,
             SubmissionAccepted =

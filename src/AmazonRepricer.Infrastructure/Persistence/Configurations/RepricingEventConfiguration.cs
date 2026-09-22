@@ -65,6 +65,22 @@ public sealed class RepricingEventConfiguration
             x.SubmittedAtUtc
         });
 
+        builder.Property(x => x.VerificationAttemptCount)
+            .HasDefaultValue(0);
+
+        builder.Property(x => x.VerificationReviewRequired)
+            .HasDefaultValue(false);
+
+        builder.Property(x => x.LastVerificationReason)
+            .HasMaxLength(1000);
+
+        builder.HasIndex(x => new
+        {
+            x.Status,
+            x.VerificationReviewRequired,
+            x.NextVerificationAttemptAtUtc
+        });
+
         builder.HasOne(x => x.Product)
             .WithMany(x => x.RepricingEvents)
             .HasForeignKey(x => x.ProductId)

@@ -45,11 +45,19 @@ public sealed class RepricingReconciliationService
         {
             if (repricingEvent.AmazonSubmissionAccepted == true)
             {
-                repricingEvent.MarkApplied(
-                    repricingEvent.ProposedPrice);
+                if (repricingEvent.Status == RepricingStatus.Approved)
+                {
+                    repricingEvent.BeginApplication();
+                }
 
-                repricingEvent.Product.CurrentPrice =
-                    repricingEvent.ProposedPrice;
+                repricingEvent.MarkAwaitingVerification();
+
+                _logger.LogInformation(
+                    "Recovered accepted submission for event {RepricingEventId}; "
+                    + "Amazon price verification is still pending.",
+                    repricingEvent.Id);
+
+                continue;
             }
             else
             {
