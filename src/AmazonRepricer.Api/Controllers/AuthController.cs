@@ -61,6 +61,15 @@ public sealed class AuthController : ControllerBase
             return Unauthorized();
         }
 
+        await using var loginTransaction =
+            await AuthUserLock.AcquireAsync(
+                _authDbContext,
+                user.Id,
+                HttpContext.RequestAborted);
+
+        await _authDbContext.Entry(user).ReloadAsync(
+            HttpContext.RequestAborted);
+
         if (!user.IsActive)
         {
             _loginTimingProtector.VerifyDummyPassword(
@@ -92,7 +101,60 @@ public sealed class AuthController : ControllerBase
                 return Unauthorized();
             }
 
+            await loginTransaction.CommitAsync(
+                HttpContext.RequestAborted);
+
             return Unauthorized();
+        }
+
+        if (await _userManager.GetTwoFactorEnabledAsync(user))
+        {
+            var code = request.TwoFactorCode?.Trim();
+
+            if (string.IsNullOrEmpty(code) &&
+                string.IsNullOrWhiteSpace(request.RecoveryCode))
+            {
+                return Unauthorized();
+            }
+
+            code ??= string.Empty;
+
+            var codeIsValid = false;
+
+            if (!string.IsNullOrWhiteSpace(request.RecoveryCode))
+            {
+                // İki doğrulama yöntemini aynı istekte kabul etme.
+                if (!string.IsNullOrWhiteSpace(request.TwoFactorCode))
+                {
+                    return BadRequest();
+                }
+
+                var recoveryResult =
+                    await _userManager.RedeemTwoFactorRecoveryCodeAsync(
+                        user,
+                        request.RecoveryCode.Trim());
+
+                codeIsValid = recoveryResult.Succeeded;
+            }
+            else
+            {
+                codeIsValid =
+                    code.Length == 6 &&
+                    code.All(c => c >= '0' && c <= '9') &&
+                    await _userManager.VerifyTwoFactorTokenAsync(
+                        user,
+                        TokenOptions.DefaultAuthenticatorProvider,
+                        code);
+            }
+
+            if (!codeIsValid)
+            {
+                await _userManager.AccessFailedAsync(user);
+                await loginTransaction.CommitAsync(
+                    HttpContext.RequestAborted);
+
+                return Unauthorized();
+            }
         }
 
         var resetResult =
@@ -149,6 +211,9 @@ public sealed class AuthController : ControllerBase
         await _authDbContext.SaveChangesAsync(
             HttpContext.RequestAborted);
 
+        await loginTransaction.CommitAsync(
+            HttpContext.RequestAborted);
+
         return Ok(
             new LoginResponse(
                 accessToken,
@@ -180,6 +245,24 @@ public sealed class AuthController : ControllerBase
         var now =
             DateTimeOffset.UtcNow;
 
+        var refreshUserId =
+            await _authDbContext.RefreshTokens
+                .AsNoTracking()
+                .Where(x => x.TokenHash == tokenHash)
+                .Select(x => (Guid?)x.UserId)
+                .SingleOrDefaultAsync(cancellationToken);
+
+        if (refreshUserId is null)
+        {
+            return Unauthorized();
+        }
+
+        await using var transaction =
+            await AuthUserLock.AcquireAsync(
+                _authDbContext,
+                refreshUserId.Value,
+                cancellationToken);
+
         var existingRefreshToken =
             await _authDbContext.RefreshTokens
                 .AsNoTracking()
@@ -199,6 +282,8 @@ public sealed class AuthController : ControllerBase
                 existingRefreshToken.FamilyId,
                 now.UtcDateTime,
                 cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
 
             return Unauthorized();
         }
@@ -234,11 +319,6 @@ public sealed class AuthController : ControllerBase
             now.Add(
                 TimeSpan.FromDays(
                     _jwtOptions.RefreshTokenLifetimeDays));
-
-        await using var transaction =
-            await _authDbContext.Database
-                .BeginTransactionAsync(
-                    cancellationToken);
 
         _authDbContext.RefreshTokens.Add(
             new AuthRefreshToken
@@ -351,7 +431,9 @@ public sealed class AuthController : ControllerBase
 
     public sealed record LoginRequest(
         string Email,
-        string Password);
+        string Password,
+        string? TwoFactorCode = null,
+        string? RecoveryCode = null);
 
     public sealed record RefreshRequest(
         string RefreshToken);

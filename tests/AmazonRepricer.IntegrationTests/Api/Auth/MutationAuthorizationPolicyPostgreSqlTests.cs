@@ -121,24 +121,9 @@ try
             using var factory =
                 AuthTestFactory.Create();
 
-            using var client =
-                factory.CreateClient(
-                    new WebApplicationFactoryClientOptions
-                    {
-                        AllowAutoRedirect = false
-                    });
-
-            var token =
-                CreateToken(
-                    issuer,
-                    audience,
-                    signingKey,
-                    role);
-
-            client.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue(
-                    "Bearer",
-                    token);
+            await using var session =
+                await EnrolledTestSession.CreateAsync(factory, role);
+            var client = session.Client;
 
             using var request =
                 new HttpRequestMessage(

@@ -63,10 +63,10 @@ public sealed class AdminUserLifecyclePostgreSqlTests
                 }
             }
 
-            using var client =
-                AuthTestClientFactory.CreateAuthenticated(
-                    factory,
-                    AppRoles.Admin);
+            await using var session =
+                await EnrolledTestSession.CreateAsync(
+                    factory, AppRoles.Admin);
+            var client = session.Client;
 
             var response =
                 await client.PostAsJsonAsync(
@@ -235,10 +235,10 @@ public sealed class AdminUserLifecyclePostgreSqlTests
                 await seedContext.SaveChangesAsync();
             }
 
-            using var client =
-                AuthTestClientFactory.CreateAuthenticated(
-                    factory,
-                    AppRoles.Admin);
+            await using var session =
+                await EnrolledTestSession.CreateAsync(
+                    factory, AppRoles.Admin);
+            var client = session.Client;
 
             var response =
                 await client.PostAsync(
@@ -350,10 +350,10 @@ public sealed class AdminUserLifecyclePostgreSqlTests
                 await seedContext.SaveChangesAsync();
             }
 
-            using var client =
-                AuthTestClientFactory.CreateAuthenticated(
-                    factory,
-                    AppRoles.Admin);
+            await using var session =
+                await EnrolledTestSession.CreateAsync(
+                    factory, AppRoles.Admin);
+            var client = session.Client;
 
             var response =
                 await client.PostAsync(
@@ -468,10 +468,10 @@ public sealed class AdminUserLifecyclePostgreSqlTests
                 await seedContext.SaveChangesAsync();
             }
 
-            using var client =
-                AuthTestClientFactory.CreateAuthenticated(
-                    factory,
-                    AppRoles.Admin);
+            await using var session =
+                await EnrolledTestSession.CreateAsync(
+                    factory, AppRoles.Admin, userId, password);
+            var client = session.Client;
 
             var response =
                 await client.PostAsync(
@@ -590,10 +590,10 @@ public sealed class AdminUserLifecyclePostgreSqlTests
                 await seedContext.SaveChangesAsync();
             }
 
-            using var client =
-                AuthTestClientFactory.CreateAuthenticated(
-                    factory,
-                    AppRoles.Admin);
+            await using var session =
+                await EnrolledTestSession.CreateAsync(
+                    factory, AppRoles.Admin);
+            var client = session.Client;
 
             var response =
                 await client.PutAsJsonAsync(
@@ -738,10 +738,10 @@ public sealed class AdminUserLifecyclePostgreSqlTests
                 await seedContext.SaveChangesAsync();
             }
 
-            using var client =
-                AuthTestClientFactory.CreateAuthenticated(
-                    factory,
-                    AppRoles.Admin);
+            await using var session =
+                await EnrolledTestSession.CreateAsync(
+                    factory, AppRoles.Admin, userId, password);
+            var client = session.Client;
 
             var response =
                 await client.PutAsJsonAsync(
@@ -847,10 +847,10 @@ public sealed class AdminUserLifecyclePostgreSqlTests
                 }
             }
 
-            using var client =
-                AuthTestClientFactory.CreateAuthenticated(
-                    factory,
-                    AppRoles.Admin);
+            await using var session =
+                await EnrolledTestSession.CreateAsync(
+                    factory, AppRoles.Admin);
+            var client = session.Client;
 
             var response =
                 await client.PostAsJsonAsync(
@@ -920,10 +920,10 @@ public sealed class AdminUserLifecyclePostgreSqlTests
                     AppRoles.Operator);
             }
 
-            using var client =
-                AuthTestClientFactory.CreateAuthenticated(
-                    factory,
-                    AppRoles.Admin);
+            await using var session =
+                await EnrolledTestSession.CreateAsync(
+                    factory, AppRoles.Admin);
+            var client = session.Client;
 
             var response =
                 await client.PostAsJsonAsync(

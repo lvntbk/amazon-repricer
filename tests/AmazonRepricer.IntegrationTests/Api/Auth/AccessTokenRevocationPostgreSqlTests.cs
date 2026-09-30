@@ -72,30 +72,12 @@ public sealed class AccessTokenRevocationPostgreSqlTests
             using var targetClient =
                 AuthTestClientFactory.Create(factory);
 
-            async Task<string> LoginAsync(
+            Task<string> LoginAsync(
                 HttpClient client,
                 string email)
             {
-                var response =
-                    await client.PostAsJsonAsync(
-                        "/api/auth/login",
-                        new
-                        {
-                            Email = email,
-                            Password = password
-                        });
-
-                Assert.Equal(
-                    HttpStatusCode.OK,
-                    response.StatusCode);
-
-                var json =
-                    await response.Content
-                        .ReadFromJsonAsync<JsonElement>();
-
-                return json
-                    .GetProperty("accessToken")
-                    .GetString()!;
+                return EnrolledTestSession.SignInAsync(
+                    factory, client, email, password);
             }
 
             actorClient.DefaultRequestHeaders.Authorization =
@@ -202,30 +184,12 @@ public sealed class AccessTokenRevocationPostgreSqlTests
             using var targetClient =
                 AuthTestClientFactory.Create(factory);
 
-            async Task<string> LoginAsync(
+            Task<string> LoginAsync(
                 HttpClient client,
                 string email)
             {
-                var response =
-                    await client.PostAsJsonAsync(
-                        "/api/auth/login",
-                        new
-                        {
-                            Email = email,
-                            Password = password
-                        });
-
-                Assert.Equal(
-                    HttpStatusCode.OK,
-                    response.StatusCode);
-
-                var json =
-                    await response.Content
-                        .ReadFromJsonAsync<JsonElement>();
-
-                return json
-                    .GetProperty("accessToken")
-                    .GetString()!;
+                return EnrolledTestSession.SignInAsync(
+                    factory, client, email, password);
             }
 
             actorClient.DefaultRequestHeaders.Authorization =
