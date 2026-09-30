@@ -55,7 +55,9 @@ public static class DependencyInjection
                     TimeSpan.FromMinutes(10);
             })
             .AddRoles<IdentityRole<Guid>>()
-            .AddEntityFrameworkStores<AuthDbContext>();
+            .AddEntityFrameworkStores<AuthDbContext>()
+            .AddTokenProvider<AuthenticatorTokenProvider<AppUser>>(
+                TokenOptions.DefaultAuthenticatorProvider);
 
         services.AddSingleton<
             IRefreshTokenGenerator,
